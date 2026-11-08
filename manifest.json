@@ -1,0 +1,15 @@
+{
+  "name": "Gasolineras en ruta",
+  "short_name": "Gasolineras",
+  "description": "La gasolinera y el cargador que más compensan en tu viaje",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#0f766e",
+  "lang": "es",
+  "icons": [
+    { "src": "iconos/icono-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "iconos/icono-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

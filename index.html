@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gasolineras en ruta</title>
+  <meta name="theme-color" content="#0f766e">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="iconos/icono-192.png">
+  <link rel="apple-touch-icon" href="iconos/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Gasolineras">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <header>
+    <h1>⛽ Gasolineras en ruta</h1>
+    <p class="sub">La gasolinera y el cargador que más compensan en tu viaje</p>
+  </header>
+
+  <main>
+    <form id="formulario" autocomplete="off">
+      <label>Origen
+        <div class="fila">
+          <input id="origen" placeholder="Ej.: Ermua" required>
+          <button type="button" id="btnUbicacion" title="Usar mi ubicación">📍</button>
+        </div>
+      </label>
+      <label>Destino
+        <input id="destino" placeholder="Ej.: Madrid" required>
+      </label>
+
+      <details id="ajustes">
+        <summary>Ajustes del coche</summary>
+        <div class="rejilla">
+          <label>Combustible
+            <select id="combustible">
+              <option value="g95">Gasolina 95</option>
+              <option value="g98">Gasolina 98</option>
+              <option value="diesel">Diésel</option>
+              <option value="dieselp">Diésel Premium</option>
+              <option value="glp">GLP</option>
+            </select>
+          </label>
+          <label>Consumo (L/100 km)
+            <input id="consumo" type="number" step="0.1" min="1" max="30">
+          </label>
+          <label>Litros que vas a echar
+            <input id="litros" type="number" step="1" min="1" max="150">
+          </label>
+          <label>Desvío máximo (km de la ruta)
+            <input id="desvio" type="number" step="0.5" min="0.5" max="20">
+          </label>
+          <label class="ancho">Precio que pagas normalmente (€/L, opcional)
+            <input id="precioRef" type="number" step="0.001" min="0.5" max="4" placeholder="Si lo dejas vacío uso el precio medio de la ruta">
+          </label>
+        </div>
+      </details>
+
+      <button type="submit" id="btnBuscar" class="principal">Buscar en la ruta</button>
+    </form>
+
+    <p id="estado" class="estado" role="status"></p>
+
+    <section id="resultados" hidden>
+      <div id="resumen" class="resumen"></div>
+      <div id="mapa"></div>
+
+      <div class="pestanas" role="tablist">
+        <button class="pestana activa" data-pestana="compensan">Las que más compensan</button>
+        <button class="pestana" data-pestana="tramos">Por tramos</button>
+        <button class="pestana" data-pestana="cargadores">Cargadores ⚡</button>
+      </div>
+
+      <div id="p-compensan" class="panel"></div>
+      <div id="p-tramos" class="panel" hidden></div>
+      <div id="p-cargadores" class="panel" hidden>
+        <label class="check"><input type="checkbox" id="soloRapidos"> Solo carga rápida (50 kW o más)</label>
+        <button id="btnCargadores" class="principal">Buscar cargadores en la ruta</button>
+        <div id="listaCargadores"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p id="fechaDatos"></p>
+    <p>Precios: Ministerio para la Transición Ecológica. Rutas: OSRM. Mapas y cargadores: © colaboradores de OpenStreetMap.</p>
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
