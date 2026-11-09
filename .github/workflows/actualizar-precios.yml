@@ -1,0 +1,30 @@
+name: Actualizar precios
+
+on:
+  schedule:
+    - cron: "15 5,11,17 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Descargar precios del Ministerio
+        run: |
+          curl -sSL --retry 3 --max-time 180 -H "Accept: application/json" -o crudo.json \
+            "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"
+      - name: Convertir a formato compacto
+        run: python scripts/actualizar_precios.py crudo.json
+      - name: Guardar cambios
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/estaciones.json
+          git diff --cached --quiet || (git commit -m "Actualizar precios" && git push)
