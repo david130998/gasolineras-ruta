@@ -1,5 +1,5 @@
 // Guarda la app para que abra rápido y sin cobertura. Los precios y las rutas siempre se piden a internet.
-const CACHE = 'gasolineras-v1';
+const CACHE = 'gasolineras-v2';
 const ARCHIVOS = ['./', 'index.html', 'estilo.css', 'app.js', 'manifest.json',
   'iconos/icono-192.png', 'iconos/icono-512.png', 'iconos/apple-touch-icon.png'];
 

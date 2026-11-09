@@ -73,6 +73,7 @@
         <button class="pestana activa" data-pestana="compensan">Las que más compensan</button>
         <button class="pestana" data-pestana="tramos">Por tramos</button>
         <button class="pestana" data-pestana="cargadores">Cargadores ⚡</button>
+        <button class="pestana" data-pestana="aparcar">Aparcar 🅿️</button>
       </div>
 
       <div id="p-compensan" class="panel"></div>
@@ -81,6 +82,22 @@
         <label class="check"><input type="checkbox" id="soloRapidos"> Solo carga rápida (50 kW o más)</label>
         <button id="btnCargadores" class="principal">Buscar cargadores en la ruta</button>
         <div id="listaCargadores"></div>
+      </div>
+      <div id="p-aparcar" class="panel" hidden>
+        <label>Buscar aparcamientos cerca de
+          <input id="sitioAparcar" placeholder="Ej.: Paseo de Santa María de la Cabeza, Madrid">
+        </label>
+        <label>Distancia máxima
+          <select id="radioAparcar">
+            <option value="500">500 m</option>
+            <option value="1000" selected>1 km</option>
+            <option value="2000">2 km</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" id="soloCubiertos"> Solo aparcamientos subterráneos o en edificio</label>
+        <button id="btnAparcar" class="principal">Buscar aparcamientos</button>
+        <p class="nota aviso">⚠️ En Madrid hay zonas de bajas emisiones (ZBE). La app no sabe qué etiquetas admite cada aparcamiento ni por dónde puedes llegar: antes de ir, compruébalo en la web del Ayuntamiento o en la del propio aparcamiento.</p>
+        <div id="listaAparcamientos"></div>
       </div>
     </section>
   </main>
