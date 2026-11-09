@@ -541,6 +541,11 @@ function cambiarModo(modo) {
   document.querySelectorAll('.modo').forEach((b) => b.classList.toggle('activo', b.dataset.modo === modo));
   $('#modo-ruta').hidden = modo !== 'ruta';
   $('#modo-aparcar').hidden = modo !== 'aparcar';
+  $('#titulo').textContent = modo === 'aparcar' ? '🅿️ Aparcar gratis' : '⛽ Gasolineras en ruta';
+  $('#subtitulo').textContent = modo === 'aparcar'
+    ? 'Aparcamientos gratis alrededor de cualquier punto del mapa'
+    : 'La gasolinera y el cargador que más compensan en tu viaje';
+  document.title = modo === 'aparcar' ? 'Aparcar gratis' : 'Gasolineras en ruta';
   try { localStorage.setItem('modo', modo); } catch { /* sin almacenamiento */ }
   if (modo === 'aparcar') {
     iniciarMapaAparcar();
