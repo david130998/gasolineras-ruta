@@ -94,6 +94,13 @@
             <option value="2000">2 km</option>
           </select>
         </label>
+        <label>Precio
+          <select id="precioAparcar">
+            <option value="gratis">Solo gratis</option>
+            <option value="gratis-sin-datos" selected>Gratis o sin precio conocido</option>
+            <option value="todos">Todos (también de pago)</option>
+          </select>
+        </label>
         <label class="check"><input type="checkbox" id="soloCubiertos"> Solo aparcamientos subterráneos o en edificio</label>
         <button id="btnAparcar" class="principal">Buscar aparcamientos</button>
         <p class="nota aviso">⚠️ En Madrid hay zonas de bajas emisiones (ZBE). La app no sabe qué etiquetas admite cada aparcamiento ni por dónde puedes llegar: antes de ir, compruébalo en la web del Ayuntamiento o en la del propio aparcamiento.</p>

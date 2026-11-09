@@ -421,8 +421,13 @@ async function buscarAparcamientos() {
       };
     }).filter(Boolean);
     if (soloCubiertos) lista = lista.filter((a) => a.tipo === 'underground' || a.tipo === 'multistorey');
+    const filtroPrecio = $('#precioAparcar').value;
+    if (filtroPrecio === 'gratis') lista = lista.filter((a) => a.pago === 'Gratis');
+    else if (filtroPrecio === 'gratis-sin-datos') lista = lista.filter((a) => a.pago !== 'De pago');
     // Primero los que tienen nombre o plazas (suelen ser aparcamientos públicos de verdad), luego por distancia.
-    lista.sort((a, b) => (Number(!!(b.plazas || b.operador)) - Number(!!(a.plazas || a.operador))) || (a.dist - b.dist));
+    // Primero los gratis confirmados, luego los que tienen plazas u operador, y después por distancia.
+    const puntos = (a) => (a.pago === 'Gratis' ? 2 : 0) + (a.plazas || a.operador ? 1 : 0);
+    lista.sort((a, b) => (puntos(b) - puntos(a)) || (a.dist - b.dist));
     lista = lista.slice(0, 40);
 
     iniciarMapa();
@@ -438,7 +443,7 @@ async function buscarAparcamientos() {
     mapa.setView([sitio.lat, sitio.lon], radio <= 500 ? 16 : radio <= 1000 ? 15 : 14);
 
     $('#listaAparcamientos').innerHTML = lista.length
-      ? `<p class="nota">${lista.length} aparcamientos a menos de ${radio >= 1000 ? radio / 1000 + ' km' : radio + ' m'} de ${escapar(sitio.nombre)}. Datos de OpenStreetMap: pueden faltar o no estar al día.</p>`
+      ? `<p class="nota">${lista.length} aparcamientos a menos de ${radio >= 1000 ? radio / 1000 + ' km' : radio + ' m'} de ${escapar(sitio.nombre)}. Datos de OpenStreetMap: pueden faltar o no estar al día. Los que no indican precio pueden ser de pago, y en Madrid la calle suele ser zona SER (de pago).</p>`
         + lista.map((a) => {
           const datosLinea = [TIPOS_PARKING[a.tipo], a.pago, a.plazas && a.plazas + ' plazas', a.disuasorio && 'Disuasorio (P+R)'].filter(Boolean);
           const google = `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${a.lat},${a.lon}`;
@@ -456,7 +461,7 @@ async function buscarAparcamientos() {
             </div>
           </article>`;
         }).join('')
-      : '<p class="nota">No he encontrado aparcamientos públicos con esos filtros. Prueba con más distancia.</p>';
+      : '<p class="nota">No he encontrado aparcamientos con esos filtros. Prueba con más distancia o con "Gratis o sin precio conocido".</p>';
   } catch (err) {
     $('#listaAparcamientos').innerHTML = `<p class="nota">${escapar(err.message || 'No he podido buscar aparcamientos.')}</p>`;
   } finally {
