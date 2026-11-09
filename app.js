@@ -453,7 +453,9 @@ async function buscarAparcamientos(sitioElegido) {
       .bindPopup(escapar(sitio.nombre)).addTo(capaAparcamientos);
     for (const a of enMapa) {
       L.circleMarker([a.lat, a.lon], { radius: 7, color: '#7c3aed', fillOpacity: 0.85, weight: 1 })
-        .bindPopup(`<b>🅿️ ${escapar(a.nombre)}</b><br>${escapar(TIPOS_PARKING[a.tipo] || '')}${a.plazas ? '<br>' + escapar(a.plazas) + ' plazas' : ''}`)
+        .bindPopup(`<b>🅿️ ${escapar(a.nombre)}</b><br>${escapar(TIPOS_PARKING[a.tipo] || '')}${a.plazas ? '<br>' + escapar(a.plazas) + ' plazas' : ''}`
+          + `<br><a href="https://waze.com/ul?ll=${a.lat},${a.lon}&navigate=yes" target="_blank" rel="noopener"><b>Ir con Waze</b></a>`
+          + ` · <a href="https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${a.lat},${a.lon}" target="_blank" rel="noopener">Google Maps</a>`)
         .addTo(capaAparcamientos);
     }
     mapaAparcar.setView([sitio.lat, sitio.lon], radio <= 500 ? 16 : radio <= 1000 ? 15 : radio <= 2000 ? 14 : 12);
@@ -471,8 +473,8 @@ async function buscarAparcamientos(sitioElegido) {
             ${a.horario ? `<div class="datos">Horario: ${escapar(a.horario)}</div>` : ''}
             ${a.operador && a.operador !== a.nombre ? `<div class="datos">Gestiona: ${escapar(a.operador)}</div>` : ''}
             <div class="enlaces">
+              <a href="${waze}" target="_blank" rel="noopener"><b>Ir con Waze</b></a>
               <a href="${google}" target="_blank" rel="noopener">Google Maps</a>
-              <a href="${waze}" target="_blank" rel="noopener">Waze</a>
               ${/^https?:\/\//.test(a.web) ? `<a href="${escapar(a.web)}" target="_blank" rel="noopener">Web</a>` : ''}
             </div>
           </article>`;
