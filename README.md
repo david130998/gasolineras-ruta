@@ -1,5 +1,7 @@
 # Gasolineras en ruta
 
+👉 **Abrir la app: https://david130998.github.io/gasolineras-ruta/**
+
 App web para el móvil: le dices origen y destino (por ejemplo Ermua → Madrid) y te dice
 qué gasolineras de la ruta compensan de verdad, descontando lo que gastas en desviarte,
 y qué cargadores eléctricos hay por el camino.
