@@ -9,7 +9,8 @@ const FACTOR_CARRETERA = 1.3;   // la distancia por carretera suele ser ~30 % ma
 const TRAMO_KM = 100;           // tamaño de los tramos de la pestaña "Por tramos"
 
 let datos = null;               // { fecha, campos, e: [[lat, lon, rotulo, ...], ...] }
-let mapa = null, capaRuta = null, capaEstaciones = null, capaCargadores = null, capaAparcamientos = null;
+let mapa = null, capaRuta = null, capaEstaciones = null, capaCargadores = null;
+let mapaAparcar = null, capaAparcamientos = null;
 let viaje = null;               // { origen, destino, puntos, km, min }
 
 // ---------- Utilidades ----------
@@ -390,16 +391,31 @@ async function overpass(consulta) {
   return r.json();
 }
 
-async function buscarAparcamientos() {
+function iniciarMapaAparcar() {
+  if (mapaAparcar) return;
+  mapaAparcar = L.map('mapaAparcar').setView([40.2, -3.7], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapaAparcar);
+  capaAparcamientos = L.layerGroup().addTo(mapaAparcar);
+  mapaAparcar.on('click', (e) => {
+    const { lat, lng } = e.latlng;
+    $('#sitioAparcar').value = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+    buscarAparcamientos({ lat, lon: lng, nombre: 'el punto elegido' });
+  });
+}
+
+async function buscarAparcamientos(sitioElegido) {
   const boton = $('#btnAparcar');
   const texto = $('#sitioAparcar').value.trim();
-  if (!texto) { $('#listaAparcamientos').innerHTML = '<p class="nota">Escribe una dirección.</p>'; return; }
+  if (!sitioElegido && !texto) { $('#listaAparcamientos').innerHTML = '<p class="nota">Escribe una localidad o toca el mapa.</p>'; return; }
   boton.disabled = true;
   $('#listaAparcamientos').innerHTML = '<p class="nota">Buscando aparcamientos…</p>';
   try {
-    const sitio = (viaje && texto === viaje.destino.nombre) ? viaje.destino : await geocodificar(texto);
-    const radio = parseInt($('#radioAparcar').value, 10) || 1000;
-    const consulta = `[out:json][timeout:60];nwr["amenity"="parking"]["access"!~"^(private|no|customers|permissive|delivery)$"](around:${radio},${sitio.lat},${sitio.lon});out center tags;`;
+    let sitio = sitioElegido && sitioElegido.lat != null ? sitioElegido : await geocodificar(texto);
+    if (!sitioElegido && /^-?\d/.test(texto)) sitio = { ...sitio, nombre: 'el punto elegido' };
+    const radio = parseInt($('#radioAparcar').value, 10) || 5000;
+    const filtroPrecio = $('#precioAparcar').value;
+    const filtroFee = filtroPrecio === 'gratis' ? '["fee"="no"]' : filtroPrecio === 'gratis-sin-datos' ? '["fee"!="yes"]' : '';
+    const consulta = `[out:json][timeout:60];nwr["amenity"="parking"]["access"!~"^(private|no|customers|permissive|delivery)$"]${filtroFee}(around:${radio},${sitio.lat},${sitio.lon});out center tags;`;
     const j = await overpass(consulta);
     const soloCubiertos = $('#soloCubiertos').checked;
 
@@ -421,29 +437,29 @@ async function buscarAparcamientos() {
       };
     }).filter(Boolean);
     if (soloCubiertos) lista = lista.filter((a) => a.tipo === 'underground' || a.tipo === 'multistorey');
-    const filtroPrecio = $('#precioAparcar').value;
     if (filtroPrecio === 'gratis') lista = lista.filter((a) => a.pago === 'Gratis');
     else if (filtroPrecio === 'gratis-sin-datos') lista = lista.filter((a) => a.pago !== 'De pago');
-    // Primero los que tienen nombre o plazas (suelen ser aparcamientos públicos de verdad), luego por distancia.
     // Primero los gratis confirmados, luego los que tienen plazas u operador, y después por distancia.
     const puntos = (a) => (a.pago === 'Gratis' ? 2 : 0) + (a.plazas || a.operador ? 1 : 0);
     lista.sort((a, b) => (puntos(b) - puntos(a)) || (a.dist - b.dist));
+    const total = lista.length;
+    const enMapa = lista.slice(0, 300);
     lista = lista.slice(0, 40);
 
-    iniciarMapa();
-    if (!capaAparcamientos) capaAparcamientos = L.layerGroup().addTo(mapa);
+    iniciarMapaAparcar();
     capaAparcamientos.clearLayers();
+    L.circle([sitio.lat, sitio.lon], { radius: radio, color: '#7c3aed', weight: 1, fillOpacity: 0.05 }).addTo(capaAparcamientos);
     L.circleMarker([sitio.lat, sitio.lon], { radius: 9, color: '#111827', fillOpacity: 0.9, weight: 2 })
       .bindPopup(escapar(sitio.nombre)).addTo(capaAparcamientos);
-    for (const a of lista) {
+    for (const a of enMapa) {
       L.circleMarker([a.lat, a.lon], { radius: 7, color: '#7c3aed', fillOpacity: 0.85, weight: 1 })
         .bindPopup(`<b>🅿️ ${escapar(a.nombre)}</b><br>${escapar(TIPOS_PARKING[a.tipo] || '')}${a.plazas ? '<br>' + escapar(a.plazas) + ' plazas' : ''}`)
         .addTo(capaAparcamientos);
     }
-    mapa.setView([sitio.lat, sitio.lon], radio <= 500 ? 16 : radio <= 1000 ? 15 : 14);
+    mapaAparcar.setView([sitio.lat, sitio.lon], radio <= 500 ? 16 : radio <= 1000 ? 15 : radio <= 2000 ? 14 : 12);
 
     $('#listaAparcamientos').innerHTML = lista.length
-      ? `<p class="nota">${lista.length} aparcamientos a menos de ${radio >= 1000 ? radio / 1000 + ' km' : radio + ' m'} de ${escapar(sitio.nombre)}. Datos de OpenStreetMap: pueden faltar o no estar al día. Los que no indican precio pueden ser de pago, y en Madrid la calle suele ser zona SER (de pago).</p>`
+      ? `<p class="nota">${total} aparcamientos a menos de ${radio >= 1000 ? radio / 1000 + ' km' : radio + ' m'} de ${escapar(sitio.nombre)}. ${total > lista.length ? `Aquí tienes los ${lista.length} primeros (gratis y más grandes antes); en el mapa salen hasta 300.` : ''} Datos de OpenStreetMap: pueden faltar o no estar al día. Los que no indican precio pueden ser de pago, y en Madrid la calle suele ser zona SER (de pago).</p>`
         + lista.map((a) => {
           const datosLinea = [TIPOS_PARKING[a.tipo], a.pago, a.plazas && a.plazas + ' plazas', a.disuasorio && 'Disuasorio (P+R)'].filter(Boolean);
           const google = `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${a.lat},${a.lon}`;
@@ -502,7 +518,6 @@ async function buscar(ev) {
 
     pintarResumen(res, aj);
     pintarGasolineras(res, aj);
-    $('#sitioAparcar').value = destino.nombre;
     estado(`${origen.nombre} → ${destino.nombre}`);
   } catch (err) {
     console.error(err);
@@ -522,9 +537,35 @@ function usarUbicacion() {
   );
 }
 
+function cambiarModo(modo) {
+  document.querySelectorAll('.modo').forEach((b) => b.classList.toggle('activo', b.dataset.modo === modo));
+  $('#modo-ruta').hidden = modo !== 'ruta';
+  $('#modo-aparcar').hidden = modo !== 'aparcar';
+  try { localStorage.setItem('modo', modo); } catch { /* sin almacenamiento */ }
+  if (modo === 'aparcar') {
+    iniciarMapaAparcar();
+    setTimeout(() => mapaAparcar.invalidateSize(), 0);
+  } else if (mapa) {
+    setTimeout(() => mapa.invalidateSize(), 0);
+  }
+}
+
+function ubicacionAparcar() {
+  if (!navigator.geolocation) return;
+  $('#listaAparcamientos').innerHTML = '<p class="nota">Buscando tu ubicación…</p>';
+  navigator.geolocation.getCurrentPosition(
+    (p) => {
+      $('#sitioAparcar').value = `${p.coords.latitude.toFixed(5)},${p.coords.longitude.toFixed(5)}`;
+      buscarAparcamientos({ lat: p.coords.latitude, lon: p.coords.longitude, nombre: 'tu ubicación' });
+    },
+    () => { $('#listaAparcamientos').innerHTML = '<p class="nota">No he podido obtener tu ubicación. Revisa los permisos.</p>'; },
+    { enableHighAccuracy: true, timeout: 15000 },
+  );
+}
+
 function cambiarPestana(nombre) {
   document.querySelectorAll('.pestana').forEach((b) => b.classList.toggle('activa', b.dataset.pestana === nombre));
-  for (const p of ['compensan', 'tramos', 'cargadores', 'aparcar']) $('#p-' + p).hidden = p !== nombre;
+  for (const p of ['compensan', 'tramos', 'cargadores']) $('#p-' + p).hidden = p !== nombre;
 }
 
 function iniciar() {
@@ -538,7 +579,13 @@ function iniciar() {
   $('#formulario').addEventListener('submit', buscar);
   $('#btnUbicacion').addEventListener('click', usarUbicacion);
   $('#btnCargadores').addEventListener('click', buscarCargadores);
-  $('#btnAparcar').addEventListener('click', buscarAparcamientos);
+  $('#btnAparcar').addEventListener('click', () => buscarAparcamientos());
+  $('#sitioAparcar').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); buscarAparcamientos(); } });
+  $('#btnUbicacionAparcar').addEventListener('click', ubicacionAparcar);
+  document.querySelectorAll('.modo').forEach((b) => b.addEventListener('click', () => cambiarModo(b.dataset.modo)));
+  let modoGuardado = 'ruta';
+  try { modoGuardado = localStorage.getItem('modo') || 'ruta'; } catch { /* sin almacenamiento */ }
+  cambiarModo(modoGuardado === 'aparcar' ? 'aparcar' : 'ruta');
   document.querySelectorAll('.pestana').forEach((b) => b.addEventListener('click', () => cambiarPestana(b.dataset.pestana)));
 
   cargarPrecios().catch(() => { /* se avisa al buscar */ });

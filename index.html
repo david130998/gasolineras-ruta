@@ -22,6 +22,12 @@
   </header>
 
   <main>
+    <div class="modos">
+      <button class="modo activo" data-modo="ruta">⛽ Gasolineras en ruta</button>
+      <button class="modo" data-modo="aparcar">🅿️ Aparcar</button>
+    </div>
+
+    <div id="modo-ruta">
     <form id="formulario" autocomplete="off">
       <label>Origen
         <div class="fila">
@@ -73,7 +79,6 @@
         <button class="pestana activa" data-pestana="compensan">Las que más compensan</button>
         <button class="pestana" data-pestana="tramos">Por tramos</button>
         <button class="pestana" data-pestana="cargadores">Cargadores ⚡</button>
-        <button class="pestana" data-pestana="aparcar">Aparcar 🅿️</button>
       </div>
 
       <div id="p-compensan" class="panel"></div>
@@ -83,29 +88,41 @@
         <button id="btnCargadores" class="principal">Buscar cargadores en la ruta</button>
         <div id="listaCargadores"></div>
       </div>
-      <div id="p-aparcar" class="panel" hidden>
+    </section>
+    </div>
+
+    <section id="modo-aparcar" hidden>
+      <div class="panel">
         <label>Buscar aparcamientos cerca de
-          <input id="sitioAparcar" placeholder="Ej.: Paseo de Santa María de la Cabeza, Madrid">
+          <div class="fila">
+            <input id="sitioAparcar" placeholder="Escribe una localidad o dirección, o toca el mapa">
+            <button type="button" id="btnUbicacionAparcar" title="Usar mi ubicación">📍</button>
+          </div>
         </label>
-        <label>Distancia máxima
-          <select id="radioAparcar">
-            <option value="500">500 m</option>
-            <option value="1000" selected>1 km</option>
-            <option value="2000">2 km</option>
-          </select>
-        </label>
-        <label>Precio
-          <select id="precioAparcar">
-            <option value="gratis">Solo gratis</option>
-            <option value="gratis-sin-datos" selected>Gratis o sin precio conocido</option>
-            <option value="todos">Todos (también de pago)</option>
-          </select>
-        </label>
+        <div class="rejilla">
+          <label>Distancia máxima
+            <select id="radioAparcar">
+              <option value="500">500 m</option>
+              <option value="1000">1 km</option>
+              <option value="2000">2 km</option>
+              <option value="5000" selected>5 km</option>
+            </select>
+          </label>
+          <label>Precio
+            <select id="precioAparcar">
+              <option value="gratis" selected>Solo gratis</option>
+              <option value="gratis-sin-datos">Gratis o sin precio conocido</option>
+              <option value="todos">Todos (también de pago)</option>
+            </select>
+          </label>
+        </div>
         <label class="check"><input type="checkbox" id="soloCubiertos"> Solo aparcamientos subterráneos o en edificio</label>
         <button id="btnAparcar" class="principal">Buscar aparcamientos</button>
-        <p class="nota aviso">⚠️ En Madrid hay zonas de bajas emisiones (ZBE). La app no sabe qué etiquetas admite cada aparcamiento ni por dónde puedes llegar: antes de ir, compruébalo en la web del Ayuntamiento o en la del propio aparcamiento.</p>
-        <div id="listaAparcamientos"></div>
       </div>
+      <p class="nota">👆 También puedes tocar cualquier punto del mapa y busco alrededor de ese punto.</p>
+      <div id="mapaAparcar"></div>
+      <p class="nota aviso">⚠️ En Madrid hay zonas de bajas emisiones (ZBE). La app no sabe qué etiquetas admite cada aparcamiento ni por dónde puedes llegar: antes de ir, compruébalo en la web del Ayuntamiento o en la del propio aparcamiento.</p>
+      <div id="listaAparcamientos" class="panel"></div>
     </section>
   </main>
 

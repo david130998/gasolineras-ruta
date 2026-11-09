@@ -10,6 +10,7 @@ y qué cargadores eléctricos hay por el camino.
 - **Ruta**: OSRM (gratis, sin clave).
 - **Buscar sitios**: Nominatim de OpenStreetMap.
 - **Cargadores**: OpenStreetMap (Overpass). Suelen traer potencia y conectores, casi nunca el precio.
+- **Modo Aparcar** (botón de arriba): escribe una localidad o toca un punto del mapa y busca aparcamientos gratis a tu alrededor (hasta 5 km), sin necesidad de buscar una ruta.
 - Cada gasolinera o cargador tiene botones para abrirlo en **Google Maps como parada**, Waze o Apple Maps.
   Google Maps y Waze sí salen en CarPlay, así que la navegación la puedes seguir allí.
 
