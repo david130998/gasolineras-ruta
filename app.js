@@ -4,7 +4,8 @@
 
 const $ = (s) => document.querySelector(s);
 const NOMBRES = { g95: 'Gasolina 95', g98: 'Gasolina 98', diesel: 'Diésel', dieselp: 'Diésel Premium', glp: 'GLP' };
-const AJUSTES_DEF = { combustible: 'g95', consumo: 6.5, litros: 40, desvio: 3, precioRef: '' };
+const AJUSTES_DEF = { combustible: 'g95', consumo: 6.5, litros: 40, desvio: 3, precioRef: '', valorHora: 10, destino: '' };
+const MAX_AFINAR = 60;          // gasolineras cuyo desvío se calcula por carretera de verdad
 const FACTOR_CARRETERA = 1.3;   // la distancia por carretera suele ser ~30 % mayor que en línea recta
 const TRAMO_KM = 100;           // tamaño de los tramos de la pestaña "Por tramos"
 
@@ -66,6 +67,8 @@ function ajustesDelFormulario() {
     litros: parseFloat($('#litros').value) || AJUSTES_DEF.litros,
     desvio: parseFloat($('#desvio').value) || AJUSTES_DEF.desvio,
     precioRef: $('#precioRef').value,
+    valorHora: parseFloat($('#valorHora').value) >= 0 ? parseFloat($('#valorHora').value) : AJUSTES_DEF.valorHora,
+    destino: $('#destino').value,
   };
 }
 
@@ -184,10 +187,52 @@ function analizarGasolineras(aj) {
   const refManual = parseFloat(aj.precioRef);
   const ref = refManual > 0 ? refManual : mediana(lista.map((g) => g.precio));
   for (const g of lista) {
-    g.costeDesvio = g.desvioKm * (aj.consumo / 100) * g.precio;
-    g.ahorro = aj.litros * (ref - g.precio) - g.costeDesvio;
+    // Estimación inicial (luego se afina por carretera con OSRM para las mejores)
+    g.extraKm = g.desvioKm;
+    g.extraMin = (g.desvioKm / 40) * 60 + (g.dist > 0.3 ? 2 : 0); // ~40 km/h fuera de la autovía + salir y volver a entrar
+    g.real = false;
+    puntuar(g, ref, aj);
   }
   return { lista, ref, refManual: refManual > 0 };
+}
+
+// El algoritmo: lo que ahorras en el depósito menos lo que te cuesta desviarte (combustible + tiempo).
+// El tiempo de repostar no cuenta, porque vas a repostar igual en una u otra gasolinera.
+function puntuar(g, ref, aj) {
+  g.ahorroBruto = aj.litros * (ref - g.precio);
+  g.costeDesvio = g.extraKm * (aj.consumo / 100) * g.precio;
+  g.costeTiempo = (g.extraMin / 60) * aj.valorHora;
+  g.ahorro = g.ahorroBruto - g.costeDesvio - g.costeTiempo;
+}
+
+// Calcula por carretera cuánto más largo es el viaje Origen → Gasolinera → Destino que Origen → Destino.
+// Una sola petición a OSRM (matriz de distancias) para las gasolineras más prometedoras.
+async function afinarDesvios(res, aj) {
+  const candidatas = [...res.lista].sort((a, b) => b.ahorro - a.ahorro).slice(0, MAX_AFINAR);
+  if (!candidatas.length) return false;
+  const o = viaje.origen, d = viaje.destino, n = candidatas.length;
+  const coords = [[o.lon, o.lat], ...candidatas.map((g) => [g.lon, g.lat]), [d.lon, d.lat]]
+    .map(([lon, lat]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(';');
+  const fuentes = Array.from({ length: n + 1 }, (_, i) => i).join(';');           // origen + gasolineras
+  const destinos = Array.from({ length: n + 1 }, (_, i) => i + 1).join(';');      // gasolineras + destino
+  const url = `https://router.project-osrm.org/table/v1/driving/${coords}`
+    + `?sources=${fuentes}&destinations=${destinos}&annotations=duration,distance`;
+  const r = await fetch(url);
+  if (!r.ok) return false;
+  const j = await r.json();
+  if (j.code !== 'Ok') return false;
+  const dur = j.durations, dis = j.distances;
+  const directoS = dur[0][n], directoM = dis[0][n];
+  if (directoS == null || directoM == null) return false;
+  candidatas.forEach((g, i) => {
+    const s1 = dur[0][i], s2 = dur[i + 1][n], m1 = dis[0][i], m2 = dis[i + 1][n];
+    if ([s1, s2, m1, m2].some((v) => v == null)) return;
+    g.extraKm = Math.max(0, (m1 + m2 - directoM) / 1000);
+    g.extraMin = Math.max(0, (s1 + s2 - directoS) / 60);
+    g.real = true;
+    puntuar(g, res.ref, aj);
+  });
+  return true;
 }
 
 // ---------- Pintar resultados ----------
@@ -202,31 +247,58 @@ function iniciarMapa() {
 }
 
 function enlacesNavegacion(lat, lon) {
-  const o = viaje.origen, d = viaje.destino;
+  const d = viaje.destino;
+  // Sin "origin": Google Maps sale desde donde estés y mantiene el destino final, con la gasolinera como parada.
   const google = 'https://www.google.com/maps/dir/?api=1&travelmode=driving'
-    + `&origin=${o.lat},${o.lon}&destination=${d.lat},${d.lon}&waypoints=${lat},${lon}`;
+    + `&destination=${d.lat},${d.lon}&waypoints=${lat},${lon}`;
   const waze = `https://waze.com/ul?ll=${lat},${lon}&navigate=yes`;
-  const apple = `https://maps.apple.com/?daddr=${lat},${lon}&dirflg=d`;
   return `<div class="enlaces">
-    <a href="${google}" target="_blank" rel="noopener">Google Maps (como parada)</a>
-    <a href="${waze}" target="_blank" rel="noopener">Waze</a>
-    <a href="${apple}" target="_blank" rel="noopener">Apple Maps</a>
+    <a class="boton-nav" href="${google}" target="_blank" rel="noopener">🛣️ Parada en Google Maps</a>
+    <a class="boton-nav" href="${waze}" target="_blank" rel="noopener" data-continuar="1">🚗 Ir con Waze</a>
   </div>`;
+}
+
+// Waze no permite añadir una parada a un viaje desde un enlace. Por eso, al ir con Waze a la gasolinera,
+// la app guarda el destino final y muestra abajo "Seguir a ..." para volver a la ruta con un toque.
+function guardarContinuar() {
+  if (!viaje) return;
+  const d = viaje.destino;
+  try { localStorage.setItem('continuar', JSON.stringify({ lat: d.lat, lon: d.lon, nombre: d.nombre })); } catch { /* sin almacenamiento */ }
+  mostrarContinuar();
+}
+
+function mostrarContinuar() {
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem('continuar') || 'null'); } catch { /* sin almacenamiento */ }
+  const barra = $('#barraContinuar');
+  if (!c) { barra.hidden = true; return; }
+  $('#enlaceContinuar').href = `https://waze.com/ul?ll=${c.lat},${c.lon}&navigate=yes`;
+  $('#textoContinuar').textContent = `Seguir a ${c.nombre.split(',')[0]} con Waze`;
+  barra.hidden = false;
+}
+
+function cerrarContinuar() {
+  try { localStorage.removeItem('continuar'); } catch { /* sin almacenamiento */ }
+  mostrarContinuar();
 }
 
 function tarjetaGasolinera(g, ref) {
   const signo = g.ahorro >= 0 ? 'bien' : 'mal';
-  const textoAhorro = g.ahorro >= 0 ? `Ahorras ${euros(g.ahorro)}` : `Pierdes ${euros(-g.ahorro)}`;
+  const textoAhorro = g.ahorro >= 0 ? `Ganas ${euros(g.ahorro)}` : `Pierdes ${euros(-g.ahorro)}`;
+  const aprox = g.real ? '' : ' (aprox.)';
   return `<article class="tarjeta">
     <div class="cabeza">
       <span class="nombre">${escapar(g.rotulo)}</span>
       <span class="precio">${precioTxt(g.precio)}</span>
     </div>
-    <div class="datos">${escapar(g.localidad)} · ${escapar(g.direccion)}</div>
-    <div class="datos">Km ${Math.round(g.km)} de la ruta · a ${km1(g.dist)} km de la carretera
-      (desvío aprox. ${km1(g.desvioKm)} km, ${euros(g.costeDesvio)})</div>
+    <div class="ahorro ${signo}">${textoAhorro}</div>
+    <div class="cuentas">
+      <span>Ahorro en el depósito</span><span>${euros(g.ahorroBruto)}</span>
+      <span>Desvío +${km1(g.extraKm)} km${aprox}</span><span>−${euros(g.costeDesvio)}</span>
+      <span>Tiempo +${Math.round(g.extraMin)} min${aprox}</span><span>−${euros(g.costeTiempo)}</span>
+    </div>
+    <div class="datos">Km ${Math.round(g.km)} del viaje · ${escapar(g.localidad)} · ${escapar(g.direccion)}</div>
     <div class="datos">Horario: ${escapar(g.horario) || 'sin datos'}</div>
-    <div class="ahorro ${signo}">${textoAhorro} frente a ${precioTxt(ref)}</div>
     ${enlacesNavegacion(g.lat, g.lon)}
   </article>`;
 }
@@ -244,7 +316,7 @@ function pintarGasolineras(res, aj) {
   const top = ordenadas.slice(0, 15);
   const textoRef = res.refManual ? 'tu precio habitual' : 'el precio medio de la ruta';
   $('#p-compensan').innerHTML =
-    `<p class="nota">Comparado con ${textoRef} (${precioTxt(ref)}), echando ${aj.litros} L y descontando lo que gastas en el desvío.</p>`
+    `<p class="nota">Comparado con ${textoRef} (${precioTxt(ref)}), echando ${aj.litros} L. Se descuenta el combustible del desvío y tu tiempo a ${euros(aj.valorHora)}/hora.${res.afinado ? '' : ' Los desvíos son aproximados: no he podido calcularlos por carretera.'}</p>`
     + top.map((g) => tarjetaGasolinera(g, ref)).join('');
 
   // Por tramos: la que más compensa en cada tramo de 100 km
@@ -268,7 +340,8 @@ function pintarGasolineras(res, aj) {
       fillOpacity: mejores.has(g) ? 0.9 : 0.5,
       weight: 1,
     }).bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${escapar(g.localidad)}<br>`
-      + (g.ahorro >= 0 ? `Ahorras ${euros(g.ahorro)}` : `Pierdes ${euros(-g.ahorro)}`))
+      + (g.ahorro >= 0 ? `Ganas ${euros(g.ahorro)}` : `Pierdes ${euros(-g.ahorro)}`)
+      + `<br>+${Math.round(g.extraMin)} min · +${km1(g.extraKm)} km`)
       .addTo(capaEstaciones);
   }
 }
@@ -280,7 +353,7 @@ function pintarResumen(res, aj) {
     <div><b>${Math.round(viaje.km)} km</b><span>${h} h ${m} min</span></div>
     <div><b>${res.lista.length}</b><span>gasolineras a ≤ ${aj.desvio} km</span></div>
     <div><b>${res.ref ? precioTxt(res.ref) : '–'}</b><span>${res.refManual ? 'tu precio' : 'precio medio'} ${NOMBRES[aj.combustible]}</span></div>
-    <div><b>${mejor ? euros(Math.max(0, mejor.ahorro)) : '–'}</b><span>ahorro máximo</span></div>`;
+    <div><b>${mejor ? euros(Math.max(0, mejor.ahorro)) : '–'}</b><span>lo máximo que ganas</span></div>`;
 }
 
 // ---------- Cargadores eléctricos (OpenStreetMap) ----------
@@ -506,6 +579,10 @@ async function buscar(ev) {
 
     estado('Buscando gasolineras en la ruta…');
     const res = analizarGasolineras(aj);
+    if (res.lista.length) {
+      estado('Calculando desvíos por carretera…');
+      try { res.afinado = await afinarDesvios(res, aj); } catch { res.afinado = false; }
+    }
 
     $('#resultados').hidden = false;
     iniciarMapa();
@@ -534,6 +611,25 @@ function usarUbicacion() {
   estado('Buscando tu ubicación…');
   navigator.geolocation.getCurrentPosition(
     (p) => { $('#origen').value = `${p.coords.latitude.toFixed(5)},${p.coords.longitude.toFixed(5)}`; estado(''); },
+    () => estado('No he podido obtener tu ubicación. Revisa los permisos.', true),
+    { enableHighAccuracy: true, timeout: 15000 },
+  );
+}
+
+// Pensado para usar en marcha: coge tu ubicación como origen y busca hacia el destino guardado.
+function repostarAhora() {
+  if (!$('#destino').value.trim()) {
+    estado('Escribe primero a dónde vas (destino).', true);
+    $('#destino').focus();
+    return;
+  }
+  if (!navigator.geolocation) { estado('Tu navegador no permite usar la ubicación.', true); return; }
+  estado('Buscando tu ubicación…');
+  navigator.geolocation.getCurrentPosition(
+    (p) => {
+      $('#origen').value = `${p.coords.latitude.toFixed(5)},${p.coords.longitude.toFixed(5)}`;
+      $('#formulario').requestSubmit();
+    },
     () => estado('No he podido obtener tu ubicación. Revisa los permisos.', true),
     { enableHighAccuracy: true, timeout: 15000 },
   );
@@ -582,9 +678,16 @@ function iniciar() {
   $('#litros').value = aj.litros;
   $('#desvio').value = aj.desvio;
   $('#precioRef').value = aj.precioRef;
+  $('#valorHora').value = aj.valorHora;
+  if (aj.destino) $('#destino').value = aj.destino;
 
   $('#formulario').addEventListener('submit', buscar);
   $('#btnUbicacion').addEventListener('click', usarUbicacion);
+  $('#btnAhora').addEventListener('click', repostarAhora);
+  $('#cerrarContinuar').addEventListener('click', cerrarContinuar);
+  $('#enlaceContinuar').addEventListener('click', () => setTimeout(cerrarContinuar, 500));
+  document.addEventListener('click', (e) => { if (e.target.closest('a[data-continuar]')) guardarContinuar(); });
+  mostrarContinuar();
   $('#btnCargadores').addEventListener('click', buscarCargadores);
   $('#btnAparcar').addEventListener('click', () => buscarAparcamientos());
   $('#sitioAparcar').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); buscarAparcamientos(); } });

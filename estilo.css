@@ -138,3 +138,61 @@ footer { padding: 24px 16px; font-size: 0.75rem; color: var(--suave); }
 #modo-aparcar .panel { margin-bottom: 8px; }
 #mapaAparcar { height: 380px; cursor: crosshair; }
 #listaAparcamientos:empty { display: none; }
+
+button.secundario {
+  padding: 12px;
+  border: 2px solid var(--acento);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--acento);
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  width: 100%;
+}
+.cuentas {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  font-size: 0.85rem;
+  color: var(--suave);
+}
+.cuentas span:nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; }
+.enlaces a.boton-nav {
+  flex: 1 1 140px;
+  text-align: center;
+  padding: 12px 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  min-height: 44px;
+}
+.barra-continuar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--acento);
+  z-index: 1000;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.2);
+}
+.barra-continuar[hidden] { display: none; }
+.barra-continuar a {
+  flex: 1;
+  color: var(--acento-texto);
+  font-weight: 800;
+  font-size: 1.05rem;
+  text-decoration: none;
+  padding: 12px 0;
+}
+.barra-continuar button {
+  border: 0;
+  background: transparent;
+  color: var(--acento-texto);
+  font-size: 1.2rem;
+  width: 44px;
+  cursor: pointer;
+}
+body:has(.barra-continuar:not([hidden])) footer { padding-bottom: 96px; }

@@ -60,6 +60,9 @@
           <label>Desvío máximo (km de la ruta)
             <input id="desvio" type="number" step="0.5" min="0.5" max="20">
           </label>
+          <label>Lo que vale tu tiempo (€/hora)
+            <input id="valorHora" type="number" step="1" min="0" max="200">
+          </label>
           <label class="ancho">Precio que pagas normalmente (€/L, opcional)
             <input id="precioRef" type="number" step="0.001" min="0.5" max="4" placeholder="Si lo dejas vacío uso el precio medio de la ruta">
           </label>
@@ -67,6 +70,7 @@
       </details>
 
       <button type="submit" id="btnBuscar" class="principal">Buscar en la ruta</button>
+      <button type="button" id="btnAhora" class="secundario">📍 Repostar ahora desde aquí</button>
     </form>
 
     <p id="estado" class="estado" role="status"></p>
@@ -125,6 +129,11 @@
       <div id="listaAparcamientos" class="panel"></div>
     </section>
   </main>
+
+  <div id="barraContinuar" class="barra-continuar" hidden>
+    <a id="enlaceContinuar" href="#" target="_blank" rel="noopener">▶ <span id="textoContinuar">Seguir al destino con Waze</span></a>
+    <button id="cerrarContinuar" type="button" aria-label="Cerrar">✕</button>
+  </div>
 
   <footer>
     <p id="fechaDatos"></p>
