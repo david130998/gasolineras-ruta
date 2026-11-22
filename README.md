@@ -9,7 +9,7 @@ y qué cargadores eléctricos hay por el camino.
 - **Precios**: datos oficiales del Ministerio para la Transición Ecológica (se actualizan solos 3 veces al día con GitHub Actions).
 - **Ruta**: OSRM (gratis, sin clave).
 - **Buscar sitios**: Nominatim de OpenStreetMap.
-- **Cargadores**: OpenStreetMap (Overpass). Suelen traer potencia y conectores, casi nunca el precio.
+- **Cargadores**: datos oficiales de la DGT / MITERD (Punto de Acceso Nacional, licencia CC BY), unos 12.000 puntos de recarga con potencia, conectores, operador y horario. Se actualizan solos con GitHub Actions. No traen precio ni disponibilidad en tiempo real. Si faltan, la app usa OpenStreetMap.
 - **Modo Aparcar** (botón de arriba): escribe una localidad o toca un punto del mapa y busca aparcamientos gratis a tu alrededor (hasta 5 km), sin necesidad de buscar una ruta.
 - Cada gasolinera o cargador tiene botones para abrirlo en **Google Maps como parada**, Waze o Apple Maps.
   Google Maps y Waze sí salen en CarPlay, así que la navegación la puedes seguir allí.

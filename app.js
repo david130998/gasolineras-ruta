@@ -209,12 +209,20 @@ function puntuar(g, ref, aj) {
 // Una sola petición a OSRM (matriz de distancias) para las gasolineras más prometedoras.
 async function afinarDesvios(res, aj) {
   const candidatas = [...res.lista].sort((a, b) => b.ahorro - a.ahorro).slice(0, MAX_AFINAR);
-  if (!candidatas.length) return false;
-  const o = viaje.origen, d = viaje.destino, n = candidatas.length;
-  const coords = [[o.lon, o.lat], ...candidatas.map((g) => [g.lon, g.lat]), [d.lon, d.lat]]
+  const ok = await desviosPorCarretera(candidatas);
+  if (ok) candidatas.forEach((g) => { if (g.real) puntuar(g, res.ref, aj); });
+  return ok;
+}
+
+// Calcula por carretera cuánto más largo es Origen → Parada → Destino que Origen → Destino.
+// Una sola petición a OSRM (matriz de distancias). Rellena extraKm, extraMin y real en cada sitio.
+async function desviosPorCarretera(sitios) {
+  if (!sitios.length) return false;
+  const o = viaje.origen, d = viaje.destino, n = sitios.length;
+  const coords = [[o.lon, o.lat], ...sitios.map((g) => [g.lon, g.lat]), [d.lon, d.lat]]
     .map(([lon, lat]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(';');
-  const fuentes = Array.from({ length: n + 1 }, (_, i) => i).join(';');           // origen + gasolineras
-  const destinos = Array.from({ length: n + 1 }, (_, i) => i + 1).join(';');      // gasolineras + destino
+  const fuentes = Array.from({ length: n + 1 }, (_, i) => i).join(';');           // origen + paradas
+  const destinos = Array.from({ length: n + 1 }, (_, i) => i + 1).join(';');      // paradas + destino
   const url = `https://router.project-osrm.org/table/v1/driving/${coords}`
     + `?sources=${fuentes}&destinations=${destinos}&annotations=duration,distance`;
   const r = await fetch(url);
@@ -224,13 +232,12 @@ async function afinarDesvios(res, aj) {
   const dur = j.durations, dis = j.distances;
   const directoS = dur[0][n], directoM = dis[0][n];
   if (directoS == null || directoM == null) return false;
-  candidatas.forEach((g, i) => {
+  sitios.forEach((g, i) => {
     const s1 = dur[0][i], s2 = dur[i + 1][n], m1 = dis[0][i], m2 = dis[i + 1][n];
     if ([s1, s2, m1, m2].some((v) => v == null)) return;
     g.extraKm = Math.max(0, (m1 + m2 - directoM) / 1000);
     g.extraMin = Math.max(0, (s1 + s2 - directoS) / 60);
     g.real = true;
-    puntuar(g, res.ref, aj);
   });
   return true;
 }
@@ -381,9 +388,64 @@ function conectores(tags) {
   const lista = [];
   for (const [k, v] of Object.entries(tags)) {
     const m = k.match(/^socket:([a-z0-9_]+)$/);
-    if (m && v !== 'no' && v !== '0') lista.push(`${nombres[m[1]] || m[1]}${/^\d+$/.test(v) ? ' ×' + v : ''}`);
+    if (m && v !== 'no' && v !== '0') lista.push(nombres[m[1]] || m[1]);
+  }
+  return [...new Set(lista)];
+}
+
+let datosCargadores = null;
+
+async function cargarCargadoresDGT() {
+  if (datosCargadores) return datosCargadores;
+  const r = await fetch('data/cargadores.json', { cache: 'no-cache' });
+  if (!r.ok) throw new Error('sin datos DGT');
+  datosCargadores = await r.json();
+  return datosCargadores;
+}
+
+// Cargadores oficiales (DGT / MITERD) a menos de "desvío máximo" de la ruta.
+function cargadoresDGT(datosC, aj) {
+  const cercano = crearBuscadorCercano(viaje.puntos);
+  const lista = [];
+  for (const e of datosC.e) {
+    const c = cercano(e[0], e[1], aj.desvio);
+    if (!c) continue;
+    lista.push({
+      lat: e[0], lon: e[1], nombre: e[2], operador: e[3], municipio: e[4], direccion: e[5],
+      puntos: e[6], kw: e[7], conectores: e[8], horario: e[9],
+      dist: c.dist, km: c.km, fuente: 'DGT',
+    });
   }
   return lista;
+}
+
+// Reserva por si no hay datos de la DGT: OpenStreetMap.
+async function cargadoresOSM(aj) {
+  const pts = viaje.puntos;
+  const salto = Math.max(1, Math.ceil(pts.length / 150));
+  const linea = [];
+  for (let i = 0; i < pts.length; i += salto) linea.push(pts[i].lat.toFixed(4), pts[i].lon.toFixed(4));
+  const ult = pts[pts.length - 1];
+  linea.push(ult.lat.toFixed(4), ult.lon.toFixed(4));
+  const consulta = `[out:json][timeout:90];nwr["amenity"="charging_station"](around:${Math.round(aj.desvio * 1000)},${linea.join(',')});out center tags;`;
+  const j = await overpass(consulta);
+  const cercano = crearBuscadorCercano(pts);
+  return j.elements.map((el) => {
+    const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
+    const t = el.tags || {};
+    const c = lat != null ? cercano(lat, lon, aj.desvio + 1) : null;
+    return c && {
+      lat, lon, dist: c.dist, km: c.km,
+      nombre: t.name || t.operator || t.network || t.brand || 'Punto de carga',
+      operador: t.operator || t.network || '',
+      municipio: '', direccion: '',
+      puntos: parseInt(t.capacity, 10) || 0,
+      kw: potenciaMaxKw(t),
+      conectores: conectores(t),
+      horario: t.opening_hours || '',
+      fuente: 'OpenStreetMap',
+    };
+  }).filter(Boolean);
 }
 
 async function buscarCargadores() {
@@ -391,54 +453,61 @@ async function buscarCargadores() {
   const aj = ajustesDelFormulario();
   const boton = $('#btnCargadores');
   boton.disabled = true;
-  $('#listaCargadores').innerHTML = '<p class="nota">Buscando cargadores… puede tardar unos segundos.</p>';
+  $('#listaCargadores').innerHTML = '<p class="nota">Buscando cargadores…</p>';
   try {
-    const pts = viaje.puntos;
-    const salto = Math.max(1, Math.ceil(pts.length / 150));
-    const linea = [];
-    for (let i = 0; i < pts.length; i += salto) linea.push(pts[i].lat.toFixed(4), pts[i].lon.toFixed(4));
-    const ult = pts[pts.length - 1];
-    linea.push(ult.lat.toFixed(4), ult.lon.toFixed(4));
-    const consulta = `[out:json][timeout:90];nwr["amenity"="charging_station"](around:${Math.round(aj.desvio * 1000)},${linea.join(',')});out center tags;`;
-    const j = await overpass(consulta);
+    let lista, fuente, fecha = '';
+    try {
+      const datosC = await cargarCargadoresDGT();
+      lista = cargadoresDGT(datosC, aj);
+      fuente = 'DGT (datos oficiales del Ministerio)';
+      fecha = datosC.fecha ? new Date(datosC.fecha).toLocaleDateString('es-ES') : '';
+    } catch {
+      lista = await cargadoresOSM(aj);
+      fuente = 'OpenStreetMap';
+    }
 
-    const cercano = crearBuscadorCercano(pts);
-    const soloRapidos = $('#soloRapidos').checked;
-    let lista = j.elements.map((el) => {
-      const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
-      const t = el.tags || {};
-      const c = lat != null ? cercano(lat, lon, aj.desvio + 1) : null;
-      return c && {
-        lat, lon, dist: c.dist, km: c.km,
-        nombre: t.name || t.operator || t.network || t.brand || 'Punto de carga',
-        operador: t.operator || t.network || '',
-        kw: potenciaMaxKw(t),
-        conectores: conectores(t),
-        precio: t.charge || (t.fee === 'no' ? 'Gratis' : ''),
-        plazas: t.capacity || '',
-      };
-    }).filter(Boolean);
-    if (soloRapidos) lista = lista.filter((c) => c.kw >= 50);
+    if ($('#soloRapidos').checked) lista = lista.filter((c) => c.kw >= 50);
+    const conector = $('#conectorCarga').value;
+    if (conector) lista = lista.filter((c) => c.conectores.includes(conector));
+
+    // Desvío real por carretera para los más cercanos a la ruta
+    lista.forEach((c) => { c.extraKm = 2 * c.dist * FACTOR_CARRETERA; c.extraMin = (c.extraKm / 40) * 60 + (c.dist > 0.3 ? 2 : 0); c.real = false; });
+    $('#listaCargadores').innerHTML = '<p class="nota">Calculando desvíos por carretera…</p>';
+    // Elige a quién calcular el desvío real: el más cercano de cada tramo de 10 km y, si sobra hueco, los más cercanos.
+    const porCercania = [...lista].sort((a, b) => a.dist - b.dist);
+    const elegidos = new Map();
+    for (const c of porCercania) { const t = Math.floor(c.km / 10); if (!elegidos.has(t)) elegidos.set(t, c); }
+    const afinar = [...elegidos.values()].slice(0, MAX_AFINAR);
+    for (const c of porCercania) { if (afinar.length >= MAX_AFINAR) break; if (!afinar.includes(c)) afinar.push(c); }
+    try { await desviosPorCarretera(afinar); } catch { /* se quedan los aproximados */ }
     lista.sort((a, b) => a.km - b.km);
 
     capaCargadores.clearLayers();
     for (const c of lista) {
-      L.circleMarker([c.lat, c.lon], { radius: 6, color: '#2563eb', fillOpacity: 0.8, weight: 1 })
-        .bindPopup(`<b>⚡ ${escapar(c.nombre)}</b><br>${c.kw ? c.kw + ' kW' : 'potencia sin datos'}`)
+      L.circleMarker([c.lat, c.lon], { radius: c.kw >= 50 ? 7 : 5, color: '#2563eb', fillOpacity: 0.8, weight: 1 })
+        .bindPopup(`<b>⚡ ${escapar(c.nombre)}</b><br>${c.kw ? c.kw + ' kW' : 'potencia sin datos'}`
+          + `<br>+${Math.round(c.extraMin)} min · +${km1(c.extraKm)} km`)
         .addTo(capaCargadores);
     }
 
     $('#listaCargadores').innerHTML = lista.length
-      ? `<p class="nota">${lista.length} cargadores a ≤ ${aj.desvio} km de la ruta, ordenados por kilómetro. Los datos vienen de OpenStreetMap y casi nunca incluyen el precio: confírmalo en la app del operador.</p>`
-        + lista.map((c) => `<article class="tarjeta">
+      ? `<p class="nota">${lista.length} cargadores a ≤ ${aj.desvio} km de la ruta, ordenados por kilómetro del viaje. Fuente: ${fuente}${fecha ? ' (' + fecha + ')' : ''}. Los datos oficiales no incluyen precio ni si están libres: míralo en la app del operador.</p>`
+        + lista.map((c) => {
+          const aprox = c.real ? '' : ' (aprox.)';
+          return `<article class="tarjeta">
           <div class="cabeza"><span class="nombre">⚡ ${escapar(c.nombre)}</span>
             <span class="precio">${c.kw ? c.kw + ' kW' : ''}</span></div>
-          <div class="datos">Km ${Math.round(c.km)} de la ruta · a ${km1(c.dist)} km de la carretera</div>
-          <div class="datos">${c.conectores.length ? 'Conectores: ' + escapar(c.conectores.join(', ')) : 'Conectores sin datos'}${c.plazas ? ' · ' + escapar(c.plazas) + ' plazas' : ''}</div>
-          ${c.precio ? `<div class="datos">Precio: ${escapar(c.precio)}</div>` : ''}
+          <div class="cuentas">
+            <span>Desvío</span><span>+${km1(c.extraKm)} km${aprox}</span>
+            <span>Tiempo de más</span><span>+${Math.round(c.extraMin)} min${aprox}</span>
+          </div>
+          <div class="datos">Km ${Math.round(c.km)} del viaje${c.municipio ? ' · ' + escapar(c.municipio) : ''}${c.direccion ? ' · ' + escapar(c.direccion) : ''}</div>
+          <div class="datos">${c.conectores.length ? escapar(c.conectores.join(', ')) : 'Conectores sin datos'}${c.puntos ? ' · ' + c.puntos + (c.puntos === 1 ? ' punto' : ' puntos') : ''}</div>
           ${c.operador && c.operador !== c.nombre ? `<div class="datos">Operador: ${escapar(c.operador)}</div>` : ''}
+          ${c.horario ? `<div class="datos">Horario: ${escapar(c.horario)}</div>` : ''}
           ${enlacesNavegacion(c.lat, c.lon)}
-        </article>`).join('')
+        </article>`;
+        }).join('')
       : '<p class="nota">No he encontrado cargadores con esos filtros cerca de la ruta.</p>';
   } catch (err) {
     $('#listaCargadores').innerHTML = `<p class="nota">${escapar(err.message || 'No he podido buscar cargadores.')}</p>`;

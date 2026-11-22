@@ -89,6 +89,14 @@
       <div id="p-tramos" class="panel" hidden></div>
       <div id="p-cargadores" class="panel" hidden>
         <label class="check"><input type="checkbox" id="soloRapidos"> Solo carga rápida (50 kW o más)</label>
+        <label>Conector
+          <select id="conectorCarga">
+            <option value="">Todos</option>
+            <option value="Tipo 2">Tipo 2 (carga normal, la más común)</option>
+            <option value="CCS2">CCS2 (carga rápida)</option>
+            <option value="CHAdeMO">CHAdeMO</option>
+          </select>
+        </label>
         <button id="btnCargadores" class="principal">Buscar cargadores en la ruta</button>
         <div id="listaCargadores"></div>
       </div>
@@ -137,7 +145,7 @@
 
   <footer>
     <p id="fechaDatos"></p>
-    <p>Precios: Ministerio para la Transición Ecológica. Rutas: OSRM. Mapas y cargadores: © colaboradores de OpenStreetMap.</p>
+    <p>Precios: Ministerio para la Transición Ecológica. Rutas: OSRM. Cargadores: DGT / MITERD (Punto de Acceso Nacional, CC BY). Mapas: © colaboradores de OpenStreetMap.</p>
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
