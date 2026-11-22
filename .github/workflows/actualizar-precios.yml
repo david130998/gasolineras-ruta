@@ -22,17 +22,17 @@ jobs:
             "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"
       - name: Convertir a formato compacto
         run: python scripts/actualizar_precios.py crudo.json
-      - name: Descargar cargadores de la DGT (muestra temporal para ver el formato)
+      - name: Descargar y convertir cargadores de la DGT
         continue-on-error: true
         run: |
           curl -sSL --retry 3 --max-time 300 -o cargadores.xml \
             "https://nap.dgt.es/datex2/v3/miterd/EnergyInfrastructureTablePublication/electrolineras.xml"
-          ls -la cargadores.xml
-          head -c 300000 cargadores.xml > data/muestra-cargadores.xml
-          git add data/muestra-cargadores.xml
+          python scripts/actualizar_cargadores.py cargadores.xml
+          git add data/cargadores.json
       - name: Guardar cambios
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/estaciones.json
-          git diff --cached --quiet || (git commit -m "Actualizar precios" && git push)
+          git rm -q --cached --ignore-unmatch data/muestra-cargadores.xml
+          git diff --cached --quiet || (git commit -m "Actualizar precios y cargadores" && git push)
