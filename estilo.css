@@ -199,20 +199,29 @@ body:has(.barra-continuar:not([hidden])) footer { padding-bottom: 96px; }
 
 .pestanas[hidden] { display: none; }
 
-/* Etiquetas de precio en el mapa: pequeñas y algo transparentes para no tapar el mapa */
+/* Etiquetas de precio en el mapa: sin fondo, el número del color de su tramo y una línea hasta su punto */
 .leaflet-tooltip.etiqueta-precio {
-  padding: 0 3px;
-  font-size: 9px;
-  font-weight: 600;
-  line-height: 1.35;
+  padding: 0 1px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
   letter-spacing: -0.2px;
-  border-radius: 4px;
+  background: transparent;
   border: 0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  opacity: 0.88 !important;
+  box-shadow: none;
+  overflow: visible;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff;
 }
 .leaflet-tooltip.etiqueta-precio::before { display: none; }
-.leaflet-tooltip.etiqueta-precio.principal { outline: 1.5px solid #111827; font-size: 10px; opacity: 1 !important; }
+.leaflet-tooltip.etiqueta-precio.principal { font-size: 11px; }
+.etiqueta-precio .guia {
+  position: absolute;
+  height: 1px;
+  background: currentColor;
+  transform-origin: 0 50%;
+  pointer-events: none;
+  box-shadow: 0 0 1px #fff;
+}
 .leyenda { display: flex; flex-wrap: wrap; gap: 4px; margin: -4px 0 12px; }
 .leyenda[hidden] { display: none; }
 .leyenda span { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; }

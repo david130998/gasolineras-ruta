@@ -70,7 +70,7 @@ function pintarLeyenda(minimo, maximo) {
   const trozos = [];
   for (let i = 0; i < escala.tramos; i++) {
     const desde = escala.base + i * escala.paso;
-    css.push(`.etiqueta-precio.nivel-${i}{background:${colorNivel(i)};color:${textoNivel(i)}}`);
+    css.push(`.etiqueta-precio.nivel-${i}{color:${colorNivel(i)}}`);
     trozos.push(`<span style="background:${colorNivel(i)};color:${textoNivel(i)}">${fmt(desde)}–${fmt(desde + escala.paso)}</span>`);
   }
   let estilo = document.getElementById('estiloNiveles');
@@ -89,7 +89,7 @@ function etiquetaPrecio(marcador, precio, principal, prioridad = 999, nivel = 0)
   marcador.options.precio = precio;
   marcador.options.principal = principal;
   marcador.bindTooltip(txt, {
-    permanent: true, direction: 'top', offset: [0, -3],
+    permanent: true, direction: 'top', offset: [0, -10],
     className: `etiqueta-precio nivel-${nivel}` + (principal ? ' principal' : ''),
   });
   return marcador;
@@ -149,6 +149,24 @@ function verEnMapa(tarjeta) {
 }
 
 // Oculta las etiquetas que se solapan con otra más importante. Se repite al mover o hacer zoom.
+// Línea fina que une el precio con su punto del mapa.
+function dibujarGuia(m, el, r) {
+  const caja = mapa.getContainer().getBoundingClientRect();
+  const p = mapa.latLngToContainerPoint(m.getLatLng());
+  const cx = caja.left + p.x, cy = caja.top + p.y;
+  // Punto del borde de la etiqueta más cercano al punto del mapa
+  const ax = Math.min(Math.max(cx, r.left), r.right), ay = Math.min(Math.max(cy, r.top), r.bottom);
+  const largo = Math.hypot(cx - ax, cy - ay) - (m.getRadius ? m.getRadius() : 0);
+  let guia = el.querySelector('.guia');
+  if (!guia) { guia = document.createElement('span'); guia.className = 'guia'; el.appendChild(guia); }
+  if (largo < 2) { guia.style.display = 'none'; return; }
+  guia.style.display = '';
+  guia.style.left = `${ax - r.left}px`;
+  guia.style.top = `${ay - r.top}px`;
+  guia.style.width = `${largo}px`;
+  guia.style.transform = `rotate(${Math.atan2(cy - ay, cx - ax)}rad)`;
+}
+
 function evitarSolapes() {
   if (!mapa || !capaEstaciones) return;
   const marcas = [];
@@ -163,13 +181,18 @@ function evitarSolapes() {
     const r = el.getBoundingClientRect();
     // Sitios donde probar la etiqueta, en orden: encima, debajo, derecha, izquierda y en diagonal.
     const w = r.width, h = r.height;
-    const huecos = [[0, 0], [0, h + 24], [w / 2 + 14, h / 2 + 12], [-(w / 2 + 14), h / 2 + 12],
-      [w / 2 + 10, 0], [-(w / 2 + 10), 0], [w / 2 + 10, h + 24], [-(w / 2 + 10), h + 24]];
+    const caja = mapa.getContainer().getBoundingClientRect();
+    const cy = caja.top + mapa.latLngToContainerPoint(m.getLatLng()).y;
+    const g = Math.max(8, cy - r.bottom); // separación entre el punto y la etiqueta
+    const abajo = h + 2 * g, lado = w / 2 + g, diag = w / 2 + g * 0.7;
+    const huecos = [[0, 0], [0, abajo], [lado, g + h / 2], [-lado, g + h / 2],
+      [diag, 0], [-diag, 0], [diag, abajo], [-diag, abajo]];
     const hueco = huecos.find(([dx, dy]) => !pisa({ left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy }));
     if (!hueco) { el.style.visibility = 'hidden'; continue; }
     const [dx, dy] = hueco;
     if (dx || dy) el.style.translate = `${dx}px ${dy}px`;
     ocupadas.push({ left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy });
+    dibujarGuia(m, el, { left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy });
   }
 }
 
