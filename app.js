@@ -29,11 +29,11 @@ function euros(n) {
 // Etiqueta fija con el precio encima del punto del mapa ("1,299").
 // Las secundarias solo se ven al acercar el mapa, para que no se amontonen.
 // Escala de colores por precio: entre la más barata y la más cara de lo que se ve en el mapa,
-// partida en 6–8 tramos con cortes redondos (medio céntimo, 1, 2, 3, 5, 6, 10 céntimos… según la diferencia).
+// partida en hasta 6 tramos con cortes redondos (medio céntimo, 1, 2, 3, 5, 6, 10 céntimos… según la diferencia).
 // Los colores siempre van de verde oscuro (barata) a granate (cara).
-const PALETA_PRECIO = ['#166534', '#16a34a', '#84cc16', '#eab308', '#f97316', '#dc2626', '#7f1d1d'];
-const PASOS_MILESIMAS = [5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 150, 200, 250, 500];
-const MAX_TRAMOS = 8;
+const PALETA_PRECIO = ['#166534', '#22c55e', '#eab308', '#f97316', '#dc2626', '#7f1d1d'];
+const PASOS_MILESIMAS = [5, 10, 20, 30, 40, 50, 60, 80, 100, 150, 200, 500];
+const MAX_TRAMOS = 6;
 let escala = { base: 0, paso: 50, tramos: 1 }; // base y paso en milésimas de euro
 const mil = (precio) => Math.round(precio * 1000);
 function nivelPrecio(precio) {
