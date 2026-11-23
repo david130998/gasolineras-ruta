@@ -634,6 +634,7 @@ async function buscar(ev) {
     }
 
     $('#resultados').hidden = false;
+    document.querySelector('.pestanas').hidden = false;
     iniciarMapa();
     if (capaRuta) capaRuta.remove();
     capaRuta = L.polyline(ruta.coords, { color: '#0f766e', weight: 5, opacity: 0.8 }).addTo(mapa);
@@ -666,22 +667,140 @@ function usarUbicacion() {
 }
 
 // Pensado para usar en marcha: coge tu ubicación como origen y busca hacia el destino guardado.
+// Con destino: busca en la ruta desde donde estás. Sin destino: las que más compensan a tu alrededor.
 function repostarAhora() {
-  if (!$('#destino').value.trim()) {
-    estado('Escribe primero a dónde vas (destino).', true);
-    $('#destino').focus();
-    return;
-  }
   if (!navigator.geolocation) { estado('Tu navegador no permite usar la ubicación.', true); return; }
   estado('Buscando tu ubicación…');
   navigator.geolocation.getCurrentPosition(
     (p) => {
       $('#origen').value = `${p.coords.latitude.toFixed(5)},${p.coords.longitude.toFixed(5)}`;
-      $('#formulario').requestSubmit();
+      if ($('#destino').value.trim()) $('#formulario').requestSubmit();
+      else buscarCerca(p.coords.latitude, p.coords.longitude);
     },
     () => estado('No he podido obtener tu ubicación. Revisa los permisos.', true),
     { enableHighAccuracy: true, timeout: 15000 },
   );
+}
+
+// ---------- Sin destino: gasolineras alrededor ----------
+
+const RADIO_CERCA = 10; // km
+
+function tarjetaCerca(g, cercana) {
+  const ganas = g.ganas;
+  const signo = ganas >= 0 ? 'bien' : 'mal';
+  const textoGanas = g === cercana ? 'Es la más cercana'
+    : ganas >= 0 ? `Ganas ${euros(ganas)}` : `Pierdes ${euros(-ganas)}`;
+  const aprox = g.real ? '' : ' (aprox.)';
+  return `<article class="tarjeta">
+    <div class="cabeza">
+      <span class="nombre">${escapar(g.rotulo)}</span>
+      <span class="precio">${precioTxt(g.precio)}</span>
+    </div>
+    <div class="ahorro ${g === cercana ? '' : signo}">${textoGanas}</div>
+    <div class="cuentas">
+      <span>Llegar: ${km1(g.km)} km, ${Math.round(g.min)} min${aprox}</span><span>${euros(g.costeLlegar)}</span>
+      <span>Depósito (${g.litros} L)</span><span>${euros(g.costeDeposito)}</span>
+      <span><b>Total</b></span><span><b>${euros(g.total)}</b></span>
+    </div>
+    <div class="datos">${escapar(g.localidad)} · ${escapar(g.direccion)}</div>
+    <div class="datos">Horario: ${escapar(g.horario) || 'sin datos'}</div>
+    <div class="enlaces">
+      <a class="boton-nav" href="https://waze.com/ul?ll=${g.lat},${g.lon}&navigate=yes" target="_blank" rel="noopener">🚗 Ir con Waze</a>
+      <a class="boton-nav" href="https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${g.lat},${g.lon}" target="_blank" rel="noopener">🗺️ Google Maps</a>
+    </div>
+  </article>`;
+}
+
+// Total = lo que pagas en el depósito + combustible para llegar + tu tiempo para llegar.
+// "Ganas" se compara con ir a la gasolinera más cercana.
+async function buscarCerca(lat, lon) {
+  const aj = ajustesDelFormulario();
+  guardarAjustes(aj);
+  const boton = $('#btnAhora');
+  boton.disabled = true;
+  try {
+    estado('Cargando precios…');
+    await cargarPrecios();
+    const col = datos.campos.indexOf(aj.combustible);
+    let lista = [];
+    for (const e of datos.e) {
+      const precio = e[col];
+      if (precio == null) continue;
+      if (Math.abs(e[0] - lat) > 0.1 || Math.abs(e[1] - lon) > 0.14) continue;
+      const dist = distKm(lat, lon, e[0], e[1]);
+      if (dist > RADIO_CERCA) continue;
+      const km = dist * FACTOR_CARRETERA;
+      lista.push({ lat: e[0], lon: e[1], rotulo: e[2], localidad: e[3], direccion: e[4], horario: e[5], precio, km, min: (km / 40) * 60 + 1, real: false });
+    }
+    if (!lista.length) throw new Error(`No hay gasolineras con ${NOMBRES[aj.combustible]} a menos de ${RADIO_CERCA} km.`);
+
+    const calcular = (g) => {
+      g.litros = aj.litros;
+      g.costeDeposito = aj.litros * g.precio;
+      g.costeLlegar = g.km * (aj.consumo / 100) * g.precio + (g.min / 60) * aj.valorHora;
+      g.total = g.costeDeposito + g.costeLlegar;
+    };
+    lista.forEach(calcular);
+    lista.sort((a, b) => a.total - b.total);
+    lista = lista.slice(0, MAX_AFINAR);
+
+    // Distancia y tiempo reales por carretera desde donde estás (una petición a OSRM)
+    estado('Calculando distancias por carretera…');
+    try {
+      const coords = [[lon, lat], ...lista.map((g) => [g.lon, g.lat])].map(([x, y]) => `${x.toFixed(5)},${y.toFixed(5)}`).join(';');
+      const destinos = lista.map((_, i) => i + 1).join(';');
+      const r = await fetch(`https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&destinations=${destinos}&annotations=duration,distance`);
+      const j = await r.json();
+      if (j.code === 'Ok') {
+        lista.forEach((g, i) => {
+          const d = j.distances[0][i], t = j.durations[0][i];
+          if (d == null || t == null) return;
+          g.km = d / 1000; g.min = t / 60; g.real = true;
+          calcular(g);
+        });
+      }
+    } catch { /* se quedan los aproximados */ }
+
+    lista.sort((a, b) => a.total - b.total);
+    const cercana = [...lista].sort((a, b) => a.min - b.min)[0];
+    lista.forEach((g) => { g.ganas = cercana.total - g.total; });
+
+    viaje = null;
+    $('#resultados').hidden = false;
+    document.querySelector('.pestanas').hidden = true;
+    cambiarPestana('compensan');
+    iniciarMapa();
+    if (capaRuta) { capaRuta.remove(); capaRuta = null; }
+    if (!capaEstaciones) capaEstaciones = L.layerGroup().addTo(mapa);
+    if (capaCargadores) capaCargadores.clearLayers();
+    capaEstaciones.clearLayers();
+    L.circleMarker([lat, lon], { radius: 9, color: '#111827', fillOpacity: 0.9, weight: 2 }).bindPopup('Estás aquí').addTo(capaEstaciones);
+    const top = lista.slice(0, 15);
+    for (const g of lista) {
+      L.circleMarker([g.lat, g.lon], { radius: top.includes(g) ? 8 : 5, color: g.ganas >= 0 ? '#15803d' : '#b91c1c', fillOpacity: 0.85, weight: 1 })
+        .bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${Math.round(g.min)} min`
+          + `<br><a href="https://waze.com/ul?ll=${g.lat},${g.lon}&navigate=yes" target="_blank" rel="noopener"><b>Ir con Waze</b></a>`)
+        .addTo(capaEstaciones);
+    }
+    mapa.invalidateSize();
+    mapa.setView([lat, lon], 12);
+
+    const mejor = lista[0];
+    $('#resumen').innerHTML = `
+      <div><b>${lista.length}</b><span>gasolineras a ≤ ${RADIO_CERCA} km</span></div>
+      <div><b>${precioTxt(mejor.precio)}</b><span>la que más compensa</span></div>
+      <div><b>${euros(Math.max(0, mejor.ganas))}</b><span>frente a la más cercana</span></div>
+      <div><b>${Math.round(cercana.min)} min</b><span>a la más cercana</span></div>`;
+    $('#p-compensan').innerHTML =
+      `<p class="nota">Sin destino: ordenadas por lo que te cuesta en total (depósito de ${aj.litros} L + combustible y tiempo para llegar, a ${euros(aj.valorHora)}/hora). "Ganas" es frente a ir a la más cercana (${escapar(cercana.rotulo)}).</p>`
+      + top.map((g) => tarjetaCerca(g, cercana)).join('');
+    estado(`Gasolineras alrededor de ti · ${NOMBRES[aj.combustible]}`);
+  } catch (err) {
+    estado(err.message || 'No he podido buscar gasolineras cerca.', true);
+  } finally {
+    boton.disabled = false;
+  }
 }
 
 function cambiarModo(modo) {

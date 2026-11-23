@@ -196,3 +196,5 @@ button.secundario {
   cursor: pointer;
 }
 body:has(.barra-continuar:not([hidden])) footer { padding-bottom: 96px; }
+
+.pestanas[hidden] { display: none; }
