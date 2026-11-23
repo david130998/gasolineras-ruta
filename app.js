@@ -26,6 +26,16 @@ function euros(n) {
   return n.toLocaleString('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
 }
 
+// Etiqueta fija con el precio encima del punto del mapa ("1,299").
+// Las secundarias solo se ven al acercar el mapa, para que no se amontonen.
+function etiquetaPrecio(marcador, precio, principal) {
+  const txt = precio.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  return marcador.bindTooltip(txt, {
+    permanent: true, direction: 'top', offset: [0, -6],
+    className: 'etiqueta-precio' + (principal ? ' principal' : ' secundaria'),
+  });
+}
+
 function precioTxt(n) {
   return n.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' €/L';
 }
@@ -251,6 +261,9 @@ async function desviosPorCarretera(sitios) {
 function iniciarMapa() {
   if (mapa) return;
   mapa = L.map('mapa', { zoomControl: true });
+  const zoomCerca = () => mapa.getContainer().classList.toggle('zoom-cerca', mapa.getZoom() >= 11);
+  mapa.on('zoomend', zoomCerca);
+  mapa.whenReady(zoomCerca);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '© OpenStreetMap',
@@ -345,15 +358,15 @@ function pintarGasolineras(res, aj) {
   // Mapa: verde si compensa, rojo si no; las 15 mejores más grandes
   const mejores = new Set(top);
   for (const g of lista) {
-    L.circleMarker([g.lat, g.lon], {
+    const m = L.circleMarker([g.lat, g.lon], {
       radius: mejores.has(g) ? 8 : 4,
       color: g.ahorro >= 0 ? '#15803d' : '#b91c1c',
       fillOpacity: mejores.has(g) ? 0.9 : 0.5,
       weight: 1,
     }).bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${escapar(g.localidad)}<br>`
       + (g.ahorro >= 0 ? `Ganas ${euros(g.ahorro)}` : `Pierdes ${euros(-g.ahorro)}`)
-      + `<br>+${Math.round(g.extraMin)} min · +${km1(g.extraKm)} km`)
-      .addTo(capaEstaciones);
+      + `<br>+${Math.round(g.extraMin)} min · +${km1(g.extraKm)} km`);
+    etiquetaPrecio(m, g.precio, mejores.has(g)).addTo(capaEstaciones);
   }
 }
 
@@ -778,10 +791,10 @@ async function buscarCerca(lat, lon) {
     L.circleMarker([lat, lon], { radius: 9, color: '#111827', fillOpacity: 0.9, weight: 2 }).bindPopup('Estás aquí').addTo(capaEstaciones);
     const top = lista.slice(0, 15);
     for (const g of lista) {
-      L.circleMarker([g.lat, g.lon], { radius: top.includes(g) ? 8 : 5, color: g.ganas >= 0 ? '#15803d' : '#b91c1c', fillOpacity: 0.85, weight: 1 })
+      const m = L.circleMarker([g.lat, g.lon], { radius: top.includes(g) ? 8 : 5, color: g.ganas >= 0 ? '#15803d' : '#b91c1c', fillOpacity: 0.85, weight: 1 })
         .bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${Math.round(g.min)} min`
-          + `<br><a href="https://waze.com/ul?ll=${g.lat},${g.lon}&navigate=yes" target="_blank" rel="noopener"><b>Ir con Waze</b></a>`)
-        .addTo(capaEstaciones);
+          + `<br><a href="https://waze.com/ul?ll=${g.lat},${g.lon}&navigate=yes" target="_blank" rel="noopener"><b>Ir con Waze</b></a>`);
+      etiquetaPrecio(m, g.precio, top.includes(g)).addTo(capaEstaciones);
     }
     mapa.invalidateSize();
     mapa.setView([lat, lon], 12);
