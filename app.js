@@ -530,6 +530,7 @@ function tarjetaGasolinera(g, ref) {
     </div>
     <div class="datos">Km ${Math.round(g.km)} del viaje · ${escapar(g.localidad)} · ${escapar(g.direccion)}</div>
     <div class="datos">Horario: ${escapar(g.horario) || 'sin datos'}</div>
+    ${cargadorTarjeta(g)}
     ${enlacesNavegacion(g.lat, g.lon)}
   </article>`;
 }
@@ -576,7 +577,7 @@ function pintarGasolineras(res, aj) {
       weight: mejores.has(g) ? 2 : 1,
     }).bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${escapar(g.localidad)}<br>`
       + (g.ahorro >= 0 ? `Ganas ${euros(g.ahorro)}` : `Pierdes ${euros(-g.ahorro)}`)
-      + `<br>+${Math.round(g.extraMin)} min · +${km1(g.extraKm)} km`);
+      + `<br>+${Math.round(g.extraMin)} min · +${km1(g.extraKm)} km` + cargadorPopup(g));
     etiquetaPrecio(m, g.precio, mejores.has(g), ordenadas.indexOf(g), nivel).addTo(capaEstaciones);
   }
 }
@@ -622,6 +623,52 @@ function conectores(tags) {
 }
 
 let datosCargadores = null;
+
+// ¿Tiene la gasolinera un cargador eléctrico? Busca cargadores de la DGT a menos de 200 m.
+const JUNTO_KM = 0.2;
+let rejillaCargadores = null;
+function anotarCargadores(lista) {
+  if (!datosCargadores) return; // sin datos: no se dice nada
+  if (!rejillaCargadores) {
+    rejillaCargadores = new Map();
+    for (const e of datosCargadores.e) {
+      const k = `${Math.floor(e[0] * 100)},${Math.floor(e[1] * 100)}`;
+      if (!rejillaCargadores.has(k)) rejillaCargadores.set(k, []);
+      rejillaCargadores.get(k).push(e);
+    }
+  }
+  for (const g of lista) {
+    const fy = Math.floor(g.lat * 100), fx = Math.floor(g.lon * 100);
+    const junto = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      for (const e of rejillaCargadores.get(`${fy + dy},${fx + dx}`) || []) {
+        if (distKm(g.lat, g.lon, e[0], e[1]) <= JUNTO_KM) junto.push(e);
+      }
+    }
+    g.cargador = junto.length ? {
+      puntos: junto.reduce((n, e) => n + (e[6] || 0), 0),
+      kw: Math.max(...junto.map((e) => e[7] || 0)),
+      conectores: [...new Set(junto.flatMap((e) => e[8] || []))],
+    } : false;
+  }
+}
+function textoCargador(c) {
+  const partes = [];
+  if (c.puntos) partes.push(`${c.puntos} ${c.puntos === 1 ? 'punto' : 'puntos'}`);
+  if (c.kw) partes.push(`hasta ${kwTxt(c.kw)}`);
+  if (c.conectores.length) partes.push(c.conectores.join(', '));
+  return partes.join(' · ');
+}
+function cargadorTarjeta(g) {
+  if (g.cargador == null) return '';
+  return g.cargador
+    ? `<div class="cargador-si">⚡ Cargador a menos de 200 m: ${escapar(textoCargador(g.cargador))}</div>`
+    : '<div class="datos">Sin cargador eléctrico a menos de 200 m</div>';
+}
+function cargadorPopup(g) {
+  if (g.cargador == null) return '';
+  return g.cargador ? `<br>⚡ ${escapar(textoCargador(g.cargador))}` : '<br>Sin cargador';
+}
 
 async function cargarCargadoresDGT() {
   if (datosCargadores) return datosCargadores;
@@ -843,7 +890,7 @@ async function buscar(ev) {
   boton.disabled = true;
   try {
     estado('Cargando precios…');
-    await cargarPrecios();
+    await Promise.all([cargarPrecios(), cargarCargadoresDGT().catch(() => null)]);
     estado('Buscando origen y destino…');
     const [origen, destino] = await Promise.all([lugarDeCampo($('#origen')), lugarDeCampo($('#destino'))]);
     estado('Calculando la ruta…');
@@ -870,6 +917,7 @@ async function buscar(ev) {
     mapa.fitBounds(capaRuta.getBounds(), { padding: [20, 20] });
 
     pintarResumen(res, aj);
+    anotarCargadores(res.lista);
     pintarGasolineras(res, aj);
     requestAnimationFrame(actualizarMapa);
     estado(`${origen.nombre} → ${destino.nombre}`);
@@ -930,6 +978,7 @@ function tarjetaCerca(g, cercana) {
     </div>
     <div class="datos">${escapar(g.localidad)} · ${escapar(g.direccion)}</div>
     <div class="datos">Horario: ${escapar(g.horario) || 'sin datos'}</div>
+    ${cargadorTarjeta(g)}
     <div class="enlaces">
       <a class="boton-nav" href="https://waze.com/ul?ll=${g.lat},${g.lon}&navigate=yes" target="_blank" rel="noopener">🚗 Ir con Waze</a>
       <a class="boton-nav" href="https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${g.lat},${g.lon}" target="_blank" rel="noopener">🗺️ Google Maps</a>
@@ -946,7 +995,7 @@ async function buscarCerca(lat, lon) {
   boton.disabled = true;
   try {
     estado('Cargando precios…');
-    await cargarPrecios();
+    await Promise.all([cargarPrecios(), cargarCargadoresDGT().catch(() => null)]);
     const col = datos.campos.indexOf(aj.combustible);
     let lista = [];
     for (const e of datos.e) {
@@ -1001,13 +1050,14 @@ async function buscarCerca(lat, lon) {
     if (capaCargadores) capaCargadores.clearLayers();
     capaEstaciones.clearLayers();
     L.circleMarker([lat, lon], { radius: 9, color: '#111827', fillOpacity: 0.9, weight: 2 }).bindPopup('Estás aquí').addTo(capaEstaciones);
+    anotarCargadores(lista);
     const top = lista.slice(0, 15);
     const minimo = Math.min(...lista.map((g) => g.precio));
     pintarLeyenda(minimo, Math.max(...lista.map((g) => g.precio)));
     for (const g of lista) {
       const nivel = nivelPrecio(g.precio);
       const m = L.circleMarker([g.lat, g.lon], { radius: top.includes(g) ? 8 : 5, color: top.includes(g) ? '#111827' : colorNivel(nivel), fillColor: colorNivel(nivel), fillOpacity: 0.9, weight: top.includes(g) ? 2 : 1 })
-        .bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${Math.round(g.min)} min`
+        .bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${Math.round(g.min)} min` + cargadorPopup(g)
           + `<br><a href="https://waze.com/ul?ll=${g.lat},${g.lon}&navigate=yes" target="_blank" rel="noopener"><b>Ir con Waze</b></a>`);
       etiquetaPrecio(m, g.precio, top.includes(g), lista.indexOf(g), nivel).addTo(capaEstaciones);
     }

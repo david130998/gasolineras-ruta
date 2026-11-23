@@ -227,3 +227,6 @@ body:has(.barra-continuar:not([hidden])) footer { padding-bottom: 96px; }
 /* Tarjeta que se puede tocar para verla en el mapa */
 .tarjeta[data-lat] { cursor: pointer; }
 .tarjeta.seleccionada { border-color: var(--acento); box-shadow: 0 0 0 2px var(--acento); }
+
+.cargador-si { font-size: 0.85rem; font-weight: 600; color: #1d4ed8; }
+@media (prefers-color-scheme: dark) { .cargador-si { color: #93c5fd; } }
