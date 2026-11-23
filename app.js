@@ -274,7 +274,7 @@ function abrirSelector(idCampo) {
   $('#selector').hidden = false;
   if (!mapaSelector) {
     mapaSelector = L.map('mapaSelector').setView([40.2, -3.7], 6);
-    capaBase().addTo(mapaSelector);
+    ponerCapasBase(mapaSelector);
     mapaSelector.on('click', (e) => elegirEnSelector(e.latlng.lat, e.latlng.lng));
   }
   if (marcaSelector) { marcaSelector.remove(); marcaSelector = null; }
@@ -477,11 +477,29 @@ function capaBase() {
   });
 }
 
+// Vista satélite: ortofoto oficial del PNOA (Instituto Geográfico Nacional), gratis y sin clave. Solo cubre España.
+function capaSatelite() {
+  return L.tileLayer('https://www.ign.es/wmts/pnoa-ma?layer=OI.OrthoimageCoverage&style=default&tilematrixset=GoogleMapsCompatible'
+    + '&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/jpeg&TileMatrix={z}&TileCol={x}&TileRow={y}', {
+    maxZoom: 19,
+    attribution: 'PNOA © <a href="https://www.ign.es">IGN España</a> (CC BY 4.0)',
+  });
+}
+// Pone el mapa base (el último que eligió el usuario) y un botón arriba a la derecha para cambiar Mapa / Satélite.
+function ponerCapasBase(m) {
+  const capas = { 'Mapa': capaBase(), 'Satélite': capaSatelite() };
+  let elegida = 'Mapa';
+  try { if (localStorage.getItem('capaMapa') === 'Satélite') elegida = 'Satélite'; } catch {}
+  capas[elegida].addTo(m);
+  L.control.layers(capas, null, { position: 'topright', collapsed: false }).addTo(m);
+  m.on('baselayerchange', (e) => { try { localStorage.setItem('capaMapa', e.name); } catch {} });
+}
+
 function iniciarMapa() {
   if (mapa) return;
   mapa = L.map('mapa', { zoomControl: true });
   mapa.on('zoomend moveend', () => requestAnimationFrame(actualizarMapa));
-  capaBase().addTo(mapa);
+  ponerCapasBase(mapa);
 }
 
 function enlacesNavegacion(lat, lon) {
@@ -809,7 +827,7 @@ async function overpass(consulta) {
 function iniciarMapaCargar() {
   if (mapaCargar) return;
   mapaCargar = L.map('mapaCargar').setView([40.2, -3.7], 6);
-  capaBase().addTo(mapaCargar);
+  ponerCapasBase(mapaCargar);
   capaCargar = L.layerGroup().addTo(mapaCargar);
   mapaCargar.on('click', (e) => {
     const { lat, lng } = e.latlng;

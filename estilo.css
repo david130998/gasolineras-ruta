@@ -299,3 +299,10 @@ body:has(.barra-continuar:not([hidden])) footer { padding-bottom: 96px; }
 
 /* Mapa base más suave para que destaquen la ruta y los precios */
 .teselas-suaves { filter: saturate(0.5) brightness(1.04) contrast(0.92); }
+
+/* Botón Mapa / Satélite */
+.leaflet-control-layers { border: 0 !important; border-radius: 10px !important; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25) !important; }
+.leaflet-control-layers-expanded { padding: 4px 8px; font: 600 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.leaflet-control-layers-base { display: flex; gap: 8px; }
+.leaflet-control-layers-base label { display: flex; align-items: center; color: #1c2430; margin: 0; }
+.leaflet-control-layers-base input { width: auto; margin: 0 3px 0 0; }
