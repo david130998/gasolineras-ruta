@@ -10,7 +10,7 @@ const FACTOR_CARRETERA = 1.3;   // la distancia por carretera suele ser ~30 % ma
 const TRAMO_KM = 100;           // tamaño de los tramos de la pestaña "Por tramos"
 
 let datos = null;               // { fecha, campos, e: [[lat, lon, rotulo, ...], ...] }
-let mapa = null, capaRuta = null, capaEstaciones = null, capaCargadores = null;
+let mapa = null, capaRuta = null, capaEstaciones = null, capaCargadores = null, marcaYo = null;
 let mapaCargar = null, capaCargar = null;
 let viaje = null;               // { origen, destino, puntos, km, min }
 
@@ -70,7 +70,7 @@ function pintarLeyenda(minimo, maximo) {
   const trozos = [];
   for (let i = 0; i < escala.tramos; i++) {
     const desde = escala.base + i * escala.paso;
-    css.push(`.etiqueta-precio.nivel-${i}{color:${colorNivel(i)}}`);
+    css.push(`.nivel-${i}{--c:${colorNivel(i)};--t:${textoNivel(i)}}`);
     trozos.push(`<span style="background:${colorNivel(i)};color:${textoNivel(i)}">${fmt(desde)}–${fmt(desde + escala.paso)}</span>`);
   }
   let estilo = document.getElementById('estiloNiveles');
@@ -83,16 +83,41 @@ function pintarLeyenda(minimo, maximo) {
 }
 
 // "prioridad": 0 = la que más compensa. Si dos etiquetas se pisan, se queda la de menor prioridad.
-function etiquetaPrecio(marcador, precio, principal, prioridad = 999, nivel = 0) {
-  const txt = precio.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
-  marcador.options.prioridad = prioridad;
-  marcador.options.precio = precio;
-  marcador.options.principal = principal;
-  marcador.bindTooltip(txt, {
-    permanent: true, direction: 'top', offset: [0, -10],
-    className: `etiqueta-precio nivel-${nivel}` + (principal ? ' principal' : ''),
+// Marcador de gasolinera: una "chincheta" con el precio, del color de su tramo, cuya punta marca el sitio exacto.
+const precioCorto = (n) => n.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+function iconoPrecio(precio, principal, nivel, estrella = false) {
+  return L.divIcon({
+    className: 'pin-precio',
+    html: `<div class="pin nivel-${nivel}${principal ? ' principal' : ''}">${estrella ? '<i>★</i>' : ''}${precioCorto(precio)}</div>`,
+    iconSize: null,
+    popupAnchor: [0, -30],
   });
-  return marcador;
+}
+function marcadorPrecio(g, principal, prioridad, nivel) {
+  const m = L.marker([g.lat, g.lon], {
+    icon: iconoPrecio(g.precio, principal, nivel, prioridad < 3),
+    zIndexOffset: principal ? 1000 - prioridad : -Math.round(g.precio * 100),
+    riseOnHover: true,
+  });
+  Object.assign(m.options, { precio: g.precio, principal, prioridad, nivel });
+  return m;
+}
+// Grupo de gasolineras cercanas (cuando se aleja el mapa): burbuja con el precio más barato y cuántas hay.
+function iconoGrupo(cluster) {
+  const marcas = cluster.getAllChildMarkers();
+  const minimo = Math.min(...marcas.map((m) => m.options.precio));
+  return L.divIcon({
+    className: 'grupo-precio',
+    html: `<div class="grupo nivel-${nivelPrecio(minimo)}">${precioCorto(minimo)}<span>${marcas.length}</span></div>`,
+    iconSize: null,
+  });
+}
+L.Popup.prototype.options.autoPanPadding = L.point(56, 40); // que la ficha no quede bajo los botones + y −
+function crearCapaEstaciones() {
+  const capa = L.markerClusterGroup
+    ? L.markerClusterGroup({ maxClusterRadius: 28, disableClusteringAtZoom: 15, showCoverageOnHover: false, spiderfyOnMaxZoom: false, iconCreateFunction: iconoGrupo })
+    : L.layerGroup();
+  return capa.addTo(mapa);
 }
 
 // Ajusta la escala de colores (mínimo y máximo) a las gasolineras que se ven ahora en el mapa.
@@ -104,21 +129,19 @@ function recolorear() {
   if (!vistas.length) vistas = marcas;
   if (!vistas.length) return;
   const precios = vistas.map((m) => m.options.precio);
+  const antes = JSON.stringify(escala);
   pintarLeyenda(Math.min(...precios), Math.max(...precios));
+  if (JSON.stringify(escala) === antes) return; // la escala no ha cambiado: nada que repintar
   for (const m of marcas) {
     const nivel = nivelPrecio(m.options.precio);
-    const color = colorNivel(nivel);
-    m.setStyle({ fillColor: color, color: m.options.principal ? '#111827' : color });
-    const t = m.getTooltip();
-    if (!t) continue;
-    t.options.className = `etiqueta-precio nivel-${nivel}` + (m.options.principal ? ' principal' : '');
-    const el = t.getElement();
-    if (el) el.className = el.className.replace(/\bnivel-\d+\b/, `nivel-${nivel}`);
+    if (nivel === m.options.nivel) continue;
+    m.options.nivel = nivel;
+    m.setIcon(iconoPrecio(m.options.precio, m.options.principal, nivel, m.options.prioridad < 3));
   }
+  if (capaEstaciones.refreshClusters) capaEstaciones.refreshClusters();
 }
 function actualizarMapa() {
   recolorear();
-  evitarSolapes();
 }
 
 // Al tocar una tarjeta de la lista: el mapa se acerca a esa gasolinera y abre su ficha.
@@ -130,70 +153,18 @@ function verEnMapa(tarjeta) {
     && Math.abs(c.getLatLng().lat - lat) < 1e-7 && Math.abs(c.getLatLng().lng - lon) < 1e-7);
   document.querySelectorAll('.tarjeta.seleccionada').forEach((t) => t.classList.remove('seleccionada'));
   tarjeta.classList.add('seleccionada');
-  if (marcaSeleccionada && capaEstaciones.hasLayer(marcaSeleccionada)) {
-    marcaSeleccionada.options.prioridad = marcaSeleccionada.options.prioridadOriginal;
-    marcaSeleccionada.setRadius(marcaSeleccionada.options.radioOriginal);
+  if (marcaSeleccionada) {
+    marcaSeleccionada.setZIndexOffset(marcaSeleccionada.options.zOriginal);
+    marcaSeleccionada.getElement()?.classList.remove('seleccionado');
   }
-  marcaSeleccionada = null;
-  if (m) {
-    marcaSeleccionada = m;
-    m.options.prioridadOriginal = m.options.prioridad;
-    m.options.radioOriginal = m.getRadius();
-    m.options.prioridad = -1; // su etiqueta se ve siempre, aunque pise otras
-    m.setRadius(11);
-    m.bringToFront();
-  }
+  marcaSeleccionada = m || null;
   $('#mapa').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  mapa.once('moveend', () => { if (m) m.openPopup(); });
-  mapa.setView([lat, lon], Math.max(mapa.getZoom(), 14), { animate: true });
-}
-
-// Oculta las etiquetas que se solapan con otra más importante. Se repite al mover o hacer zoom.
-// Línea fina que une el precio con su punto del mapa.
-function dibujarGuia(m, el, r) {
-  const caja = mapa.getContainer().getBoundingClientRect();
-  const p = mapa.latLngToContainerPoint(m.getLatLng());
-  const cx = caja.left + p.x, cy = caja.top + p.y;
-  // Punto del borde de la etiqueta más cercano al punto del mapa
-  const ax = Math.min(Math.max(cx, r.left), r.right), ay = Math.min(Math.max(cy, r.top), r.bottom);
-  const largo = Math.hypot(cx - ax, cy - ay) - (m.getRadius ? m.getRadius() : 0);
-  let guia = el.querySelector('.guia');
-  if (!guia) { guia = document.createElement('span'); guia.className = 'guia'; el.appendChild(guia); }
-  if (largo < 2) { guia.style.display = 'none'; return; }
-  guia.style.display = '';
-  guia.style.left = `${ax - r.left}px`;
-  guia.style.top = `${ay - r.top}px`;
-  guia.style.width = `${largo}px`;
-  guia.style.transform = `rotate(${Math.atan2(cy - ay, cx - ax)}rad)`;
-}
-
-function evitarSolapes() {
-  if (!mapa || !capaEstaciones) return;
-  const marcas = [];
-  capaEstaciones.eachLayer((m) => { const t = m.getTooltip && m.getTooltip(); if (t && t.getElement()) marcas.push(m); });
-  marcas.sort((a, b) => a.options.prioridad - b.options.prioridad);
-  const ocupadas = [];
-  const pisa = (r) => ocupadas.some((o) => r.left < o.right + 2 && r.right > o.left - 2 && r.top < o.bottom + 2 && r.bottom > o.top - 2);
-  for (const m of marcas) {
-    const el = m.getTooltip().getElement();
-    el.style.visibility = 'visible';
-    el.style.translate = '';
-    const r = el.getBoundingClientRect();
-    // Sitios donde probar la etiqueta, en orden: encima, debajo, derecha, izquierda y en diagonal.
-    const w = r.width, h = r.height;
-    const caja = mapa.getContainer().getBoundingClientRect();
-    const cy = caja.top + mapa.latLngToContainerPoint(m.getLatLng()).y;
-    const g = Math.max(8, cy - r.bottom); // separación entre el punto y la etiqueta
-    const abajo = h + 2 * g, lado = w / 2 + g, diag = w / 2 + g * 0.7;
-    const huecos = [[0, 0], [0, abajo], [lado, g + h / 2], [-lado, g + h / 2],
-      [diag, 0], [-diag, 0], [diag, abajo], [-diag, abajo]];
-    const hueco = huecos.find(([dx, dy]) => !pisa({ left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy }));
-    if (!hueco) { el.style.visibility = 'hidden'; continue; }
-    const [dx, dy] = hueco;
-    if (dx || dy) el.style.translate = `${dx}px ${dy}px`;
-    ocupadas.push({ left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy });
-    dibujarGuia(m, el, { left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy });
-  }
+  if (!m) { mapa.setView([lat, lon], 15); return; }
+  m.options.zOriginal ??= m.options.zIndexOffset;
+  m.setZIndexOffset(5000);
+  const abrir = () => { m.getElement()?.classList.add('seleccionado'); m.openPopup(); };
+  mapa.once('moveend', () => setTimeout(abrir, 50));
+  mapa.setView([lat, lon], Math.max(mapa.getZoom(), 15), { animate: true });
 }
 
 function precioTxt(n) {
@@ -303,7 +274,7 @@ function abrirSelector(idCampo) {
   $('#selector').hidden = false;
   if (!mapaSelector) {
     mapaSelector = L.map('mapaSelector').setView([40.2, -3.7], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapaSelector);
+    capaBase().addTo(mapaSelector);
     mapaSelector.on('click', (e) => elegirEnSelector(e.latlng.lat, e.latlng.lng));
   }
   if (marcaSelector) { marcaSelector.remove(); marcaSelector = null; }
@@ -498,14 +469,19 @@ async function desviosPorCarretera(sitios) {
 
 // ---------- Pintar resultados ----------
 
+// Mapa base claro y limpio (CARTO Voyager, datos de OpenStreetMap)
+function capaBase() {
+  return L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19, subdomains: 'abcd',
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+  });
+}
+
 function iniciarMapa() {
   if (mapa) return;
   mapa = L.map('mapa', { zoomControl: true });
   mapa.on('zoomend moveend', () => requestAnimationFrame(actualizarMapa));
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '© OpenStreetMap',
-  }).addTo(mapa);
+  capaBase().addTo(mapa);
 }
 
 function enlacesNavegacion(lat, lon) {
@@ -600,16 +576,10 @@ function pintarGasolineras(res, aj) {
   pintarLeyenda(minimo, Math.max(...lista.map((g) => g.precio)));
   for (const g of lista) {
     const nivel = nivelPrecio(g.precio);
-    const m = L.circleMarker([g.lat, g.lon], {
-      radius: mejores.has(g) ? 8 : 5,
-      color: mejores.has(g) ? '#111827' : colorNivel(nivel),
-      fillColor: colorNivel(nivel),
-      fillOpacity: 0.9,
-      weight: mejores.has(g) ? 2 : 1,
-    }).bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${escapar(g.localidad)}<br>`
+    const m = marcadorPrecio(g, mejores.has(g), ordenadas.indexOf(g), nivel).bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${escapar(g.localidad)}<br>`
       + (g.ahorro >= 0 ? `Ganas ${euros(g.ahorro)}` : `Pierdes ${euros(-g.ahorro)}`)
       + `<br>+${Math.round(g.extraMin)} min · +${km1(g.extraKm)} km` + cargadorPopup(g));
-    etiquetaPrecio(m, g.precio, mejores.has(g), ordenadas.indexOf(g), nivel).addTo(capaEstaciones);
+    m.addTo(capaEstaciones);
   }
 }
 
@@ -839,7 +809,7 @@ async function overpass(consulta) {
 function iniciarMapaCargar() {
   if (mapaCargar) return;
   mapaCargar = L.map('mapaCargar').setView([40.2, -3.7], 6);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapaCargar);
+  capaBase().addTo(mapaCargar);
   capaCargar = L.layerGroup().addTo(mapaCargar);
   mapaCargar.on('click', (e) => {
     const { lat, lng } = e.latlng;
@@ -939,8 +909,12 @@ async function buscar(ev) {
     document.querySelector('.pestanas').hidden = false;
     iniciarMapa();
     if (capaRuta) capaRuta.remove();
-    capaRuta = L.polyline(ruta.coords, { color: '#0f766e', weight: 5, opacity: 0.8 }).addTo(mapa);
-    if (!capaEstaciones) capaEstaciones = L.layerGroup().addTo(mapa);
+    if (marcaYo) { marcaYo.remove(); marcaYo = null; }
+    capaRuta = L.featureGroup([
+      L.polyline(ruta.coords, { color: '#ffffff', weight: 9, opacity: 0.9 }),
+      L.polyline(ruta.coords, { color: '#0f766e', weight: 5, opacity: 0.95 }),
+    ]).addTo(mapa);
+    if (!capaEstaciones) capaEstaciones = crearCapaEstaciones();
     if (!capaCargadores) capaCargadores = L.layerGroup().addTo(mapa);
     capaCargadores.clearLayers();
     $('#listaCargadores').innerHTML = '';
@@ -1077,20 +1051,21 @@ async function buscarCerca(lat, lon) {
     cambiarPestana('compensan');
     iniciarMapa();
     if (capaRuta) { capaRuta.remove(); capaRuta = null; }
-    if (!capaEstaciones) capaEstaciones = L.layerGroup().addTo(mapa);
+    if (!capaEstaciones) capaEstaciones = crearCapaEstaciones();
     if (capaCargadores) capaCargadores.clearLayers();
     capaEstaciones.clearLayers();
-    L.circleMarker([lat, lon], { radius: 9, color: '#111827', fillOpacity: 0.9, weight: 2 }).bindPopup('Estás aquí').addTo(capaEstaciones);
+    if (marcaYo) marcaYo.remove();
+    marcaYo = L.marker([lat, lon], { icon: L.divIcon({ className: 'pin-yo', html: '<div class="yo"></div>', iconSize: null }), zIndexOffset: 3000 }).bindPopup('Estás aquí').addTo(mapa);
     anotarCargadores(lista);
     const top = lista.slice(0, 15);
     const minimo = Math.min(...lista.map((g) => g.precio));
     pintarLeyenda(minimo, Math.max(...lista.map((g) => g.precio)));
     for (const g of lista) {
       const nivel = nivelPrecio(g.precio);
-      const m = L.circleMarker([g.lat, g.lon], { radius: top.includes(g) ? 8 : 5, color: top.includes(g) ? '#111827' : colorNivel(nivel), fillColor: colorNivel(nivel), fillOpacity: 0.9, weight: top.includes(g) ? 2 : 1 })
+      const m = marcadorPrecio(g, top.includes(g), lista.indexOf(g), nivel)
         .bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${Math.round(g.min)} min` + cargadorPopup(g)
           + `<br><a href="https://waze.com/ul?ll=${g.lat},${g.lon}&navigate=yes" target="_blank" rel="noopener"><b>Ir con Waze</b></a>`);
-      etiquetaPrecio(m, g.precio, top.includes(g), lista.indexOf(g), nivel).addTo(capaEstaciones);
+      m.addTo(capaEstaciones);
     }
     mapa.invalidateSize();
     mapa.setView([lat, lon], 12);
