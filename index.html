@@ -24,7 +24,7 @@
   <main>
     <div class="modos">
       <button class="modo activo" data-modo="ruta">⛽ Gasolineras en ruta</button>
-      <button class="modo" data-modo="aparcar">🅿️ Aparcar</button>
+      <button class="modo" data-modo="cargar">⚡ Electrolineras</button>
     </div>
 
     <div id="modo-ruta">
@@ -103,38 +103,39 @@
     </section>
     </div>
 
-    <section id="modo-aparcar" hidden>
+    <section id="modo-cargar" hidden>
       <div class="panel">
-        <label>Buscar aparcamientos cerca de
+        <label>Buscar electrolineras cerca de
           <div class="fila">
-            <input id="sitioAparcar" placeholder="Escribe una localidad o dirección, o toca el mapa">
-            <button type="button" id="btnUbicacionAparcar" title="Usar mi ubicación">📍</button>
+            <input id="sitioCargar" placeholder="Escribe una localidad o dirección, o toca el mapa">
+            <button type="button" id="btnUbicacionCargar" title="Usar mi ubicación">📍</button>
           </div>
         </label>
         <div class="rejilla">
           <label>Distancia máxima
-            <select id="radioAparcar">
-              <option value="500">500 m</option>
-              <option value="1000">1 km</option>
-              <option value="2000">2 km</option>
-              <option value="5000" selected>5 km</option>
+            <select id="radioCargar">
+              <option value="1">1 km</option>
+              <option value="2">2 km</option>
+              <option value="5" selected>5 km</option>
+              <option value="10">10 km</option>
+              <option value="25">25 km</option>
             </select>
           </label>
-          <label>Precio
-            <select id="precioAparcar">
-              <option value="gratis" selected>Solo gratis</option>
-              <option value="gratis-sin-datos">Gratis o sin precio conocido</option>
-              <option value="todos">Todos (también de pago)</option>
+          <label>Conector
+            <select id="conectorCargar">
+              <option value="">Todos</option>
+              <option value="Tipo 2">Tipo 2 (carga normal)</option>
+              <option value="CCS2">CCS2 (carga rápida)</option>
+              <option value="CHAdeMO">CHAdeMO</option>
             </select>
           </label>
         </div>
-        <label class="check"><input type="checkbox" id="soloCubiertos"> Solo aparcamientos subterráneos o en edificio</label>
-        <button id="btnAparcar" class="principal">Buscar aparcamientos</button>
+        <label class="check"><input type="checkbox" id="soloRapidosCargar"> Solo carga rápida (50 kW o más)</label>
+        <button id="btnCargar" class="principal">Buscar electrolineras</button>
       </div>
       <p class="nota">👆 También puedes tocar cualquier punto del mapa y busco alrededor de ese punto.</p>
-      <div id="mapaAparcar"></div>
-      <p class="nota aviso">⚠️ En Madrid hay zonas de bajas emisiones (ZBE). La app no sabe qué etiquetas admite cada aparcamiento ni por dónde puedes llegar: antes de ir, compruébalo en la web del Ayuntamiento o en la del propio aparcamiento.</p>
-      <div id="listaAparcamientos" class="panel"></div>
+      <div id="mapaCargar"></div>
+      <div id="listaCargar" class="panel"></div>
     </section>
   </main>
 

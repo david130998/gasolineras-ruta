@@ -82,7 +82,7 @@ button:disabled { opacity: 0.6; cursor: wait; }
 .resumen div b { display: block; font-size: 1.15rem; }
 .resumen div span { font-size: 0.8rem; color: var(--suave); }
 
-#mapa, #mapaAparcar { height: 320px; border-radius: 12px; margin: 12px 0; border: 1px solid var(--borde); z-index: 0; }
+#mapa, #mapaCargar { height: 320px; border-radius: 12px; margin: 12px 0; border: 1px solid var(--borde); z-index: 0; }
 
 .pestanas { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 8px; }
 .pestana {
@@ -135,9 +135,9 @@ footer { padding: 24px 16px; font-size: 0.75rem; color: var(--suave); }
   cursor: pointer;
 }
 .modo.activo { background: var(--acento); color: var(--acento-texto); border-color: var(--acento); }
-#modo-aparcar .panel { margin-bottom: 8px; }
-#mapaAparcar { height: 380px; cursor: crosshair; }
-#listaAparcamientos:empty { display: none; }
+#modo-cargar .panel { margin-bottom: 8px; }
+#mapaCargar { height: 380px; cursor: crosshair; }
+#listaCargar:empty { display: none; }
 
 button.secundario {
   padding: 12px;

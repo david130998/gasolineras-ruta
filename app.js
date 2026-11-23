@@ -11,7 +11,7 @@ const TRAMO_KM = 100;           // tamaño de los tramos de la pestaña "Por tra
 
 let datos = null;               // { fecha, campos, e: [[lat, lon, rotulo, ...], ...] }
 let mapa = null, capaRuta = null, capaEstaciones = null, capaCargadores = null;
-let mapaAparcar = null, capaAparcamientos = null;
+let mapaCargar = null, capaCargar = null;
 let viaje = null;               // { origen, destino, puntos, km, min }
 
 // ---------- Utilidades ----------
@@ -28,6 +28,10 @@ function euros(n) {
 
 function precioTxt(n) {
   return n.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' €/L';
+}
+
+function kwTxt(n) {
+  return n.toLocaleString('es-ES', { maximumFractionDigits: 1 }) + ' kW';
 }
 
 function km1(n) {
@@ -485,7 +489,7 @@ async function buscarCargadores() {
     capaCargadores.clearLayers();
     for (const c of lista) {
       L.circleMarker([c.lat, c.lon], { radius: c.kw >= 50 ? 7 : 5, color: '#2563eb', fillOpacity: 0.8, weight: 1 })
-        .bindPopup(`<b>⚡ ${escapar(c.nombre)}</b><br>${c.kw ? c.kw + ' kW' : 'potencia sin datos'}`
+        .bindPopup(`<b>⚡ ${escapar(c.nombre)}</b><br>${c.kw ? kwTxt(c.kw) : 'potencia sin datos'}`
           + `<br>+${Math.round(c.extraMin)} min · +${km1(c.extraKm)} km`)
         .addTo(capaCargadores);
     }
@@ -496,7 +500,7 @@ async function buscarCargadores() {
           const aprox = c.real ? '' : ' (aprox.)';
           return `<article class="tarjeta">
           <div class="cabeza"><span class="nombre">⚡ ${escapar(c.nombre)}</span>
-            <span class="precio">${c.kw ? c.kw + ' kW' : ''}</span></div>
+            <span class="precio">${c.kw ? kwTxt(c.kw) : ''}</span></div>
           <div class="cuentas">
             <span>Desvío</span><span>+${km1(c.extraKm)} km${aprox}</span>
             <span>Tiempo de más</span><span>+${Math.round(c.extraMin)} min${aprox}</span>
@@ -516,12 +520,7 @@ async function buscarCargadores() {
   }
 }
 
-// ---------- Aparcamientos (OpenStreetMap) ----------
-
-const TIPOS_PARKING = {
-  underground: 'Subterráneo', multistorey: 'En edificio', surface: 'En superficie',
-  street_side: 'Junto a la calle', lane: 'En la calzada', rooftop: 'En azotea', garage_boxes: 'Garajes',
-};
+// ---------- OpenStreetMap (Overpass) ----------
 
 async function overpass(consulta) {
   const r = await fetch('https://overpass-api.de/api/interpreter', {
@@ -533,97 +532,78 @@ async function overpass(consulta) {
   return r.json();
 }
 
-function iniciarMapaAparcar() {
-  if (mapaAparcar) return;
-  mapaAparcar = L.map('mapaAparcar').setView([40.2, -3.7], 6);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapaAparcar);
-  capaAparcamientos = L.layerGroup().addTo(mapaAparcar);
-  mapaAparcar.on('click', (e) => {
+// ---------- Electrolineras alrededor de un punto (sin ruta) ----------
+
+function iniciarMapaCargar() {
+  if (mapaCargar) return;
+  mapaCargar = L.map('mapaCargar').setView([40.2, -3.7], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapaCargar);
+  capaCargar = L.layerGroup().addTo(mapaCargar);
+  mapaCargar.on('click', (e) => {
     const { lat, lng } = e.latlng;
-    $('#sitioAparcar').value = `${lat.toFixed(5)},${lng.toFixed(5)}`;
-    buscarAparcamientos({ lat, lon: lng, nombre: 'el punto elegido' });
+    $('#sitioCargar').value = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+    buscarElectrolineras({ lat, lon: lng, nombre: 'el punto elegido' });
   });
 }
 
-async function buscarAparcamientos(sitioElegido) {
-  const boton = $('#btnAparcar');
-  const texto = $('#sitioAparcar').value.trim();
-  if (!sitioElegido && !texto) { $('#listaAparcamientos').innerHTML = '<p class="nota">Escribe una localidad o toca el mapa.</p>'; return; }
+async function buscarElectrolineras(sitioElegido) {
+  const boton = $('#btnCargar');
+  const texto = $('#sitioCargar').value.trim();
+  if (!sitioElegido && !texto) { $('#listaCargar').innerHTML = '<p class="nota">Escribe una localidad o toca el mapa.</p>'; return; }
   boton.disabled = true;
-  $('#listaAparcamientos').innerHTML = '<p class="nota">Buscando aparcamientos…</p>';
+  $('#listaCargar').innerHTML = '<p class="nota">Buscando electrolineras…</p>';
   try {
     let sitio = sitioElegido && sitioElegido.lat != null ? sitioElegido : await geocodificar(texto);
     if (!sitioElegido && /^-?\d/.test(texto)) sitio = { ...sitio, nombre: 'el punto elegido' };
-    const radio = parseInt($('#radioAparcar').value, 10) || 5000;
-    const filtroPrecio = $('#precioAparcar').value;
-    const filtroFee = filtroPrecio === 'gratis' ? '["fee"="no"]' : filtroPrecio === 'gratis-sin-datos' ? '["fee"!="yes"]' : '';
-    const consulta = `[out:json][timeout:60];nwr["amenity"="parking"]["access"!~"^(private|no|customers|permissive|delivery)$"]${filtroFee}(around:${radio},${sitio.lat},${sitio.lon});out center tags;`;
-    const j = await overpass(consulta);
-    const soloCubiertos = $('#soloCubiertos').checked;
+    const radio = parseFloat($('#radioCargar').value) || 5;
+    const conector = $('#conectorCargar').value;
+    const soloRapidos = $('#soloRapidosCargar').checked;
+    const datosC = await cargarCargadoresDGT();
 
-    let lista = j.elements.map((el) => {
-      const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
-      if (lat == null) return null;
-      const t = el.tags || {};
-      return {
-        lat, lon,
-        dist: distKm(sitio.lat, sitio.lon, lat, lon),
-        nombre: t.name || t.operator || (TIPOS_PARKING[t.parking] ? 'Aparcamiento ' + TIPOS_PARKING[t.parking].toLowerCase() : 'Aparcamiento'),
-        tipo: t.parking || '',
-        pago: t.fee === 'yes' ? 'De pago' : t.fee === 'no' ? 'Gratis' : '',
-        plazas: t.capacity || '',
-        horario: t.opening_hours || '',
-        operador: t.operator || '',
-        disuasorio: t.park_ride && t.park_ride !== 'no',
-        web: t.website || t['contact:website'] || '',
-      };
-    }).filter(Boolean);
-    if (soloCubiertos) lista = lista.filter((a) => a.tipo === 'underground' || a.tipo === 'multistorey');
-    if (filtroPrecio === 'gratis') lista = lista.filter((a) => a.pago === 'Gratis');
-    else if (filtroPrecio === 'gratis-sin-datos') lista = lista.filter((a) => a.pago !== 'De pago');
-    // Primero los gratis confirmados, luego los que tienen plazas u operador, y después por distancia.
-    const puntos = (a) => (a.pago === 'Gratis' ? 2 : 0) + (a.plazas || a.operador ? 1 : 0);
-    lista.sort((a, b) => (puntos(b) - puntos(a)) || (a.dist - b.dist));
-    const total = lista.length;
-    const enMapa = lista.slice(0, 300);
-    lista = lista.slice(0, 40);
-
-    iniciarMapaAparcar();
-    capaAparcamientos.clearLayers();
-    L.circle([sitio.lat, sitio.lon], { radius: radio, color: '#7c3aed', weight: 1, fillOpacity: 0.05 }).addTo(capaAparcamientos);
-    L.circleMarker([sitio.lat, sitio.lon], { radius: 9, color: '#111827', fillOpacity: 0.9, weight: 2 })
-      .bindPopup(escapar(sitio.nombre)).addTo(capaAparcamientos);
-    for (const a of enMapa) {
-      L.circleMarker([a.lat, a.lon], { radius: 7, color: '#7c3aed', fillOpacity: 0.85, weight: 1 })
-        .bindPopup(`<b>🅿️ ${escapar(a.nombre)}</b><br>${escapar(TIPOS_PARKING[a.tipo] || '')}${a.plazas ? '<br>' + escapar(a.plazas) + ' plazas' : ''}`
-          + `<br><a href="https://waze.com/ul?ll=${a.lat},${a.lon}&navigate=yes" target="_blank" rel="noopener"><b>Ir con Waze</b></a>`
-          + ` · <a href="https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${a.lat},${a.lon}" target="_blank" rel="noopener">Google Maps</a>`)
-        .addTo(capaAparcamientos);
+    let lista = [];
+    for (const e of datosC.e) {
+      if (Math.abs(e[0] - sitio.lat) > radio / 100 || Math.abs(e[1] - sitio.lon) > radio / 70) continue; // filtro rápido
+      const dist = distKm(sitio.lat, sitio.lon, e[0], e[1]);
+      if (dist > radio) continue;
+      if (soloRapidos && e[7] < 50) continue;
+      if (conector && !e[8].includes(conector)) continue;
+      lista.push({ lat: e[0], lon: e[1], nombre: e[2], operador: e[3], municipio: e[4], direccion: e[5], puntos: e[6], kw: e[7], conectores: e[8], horario: e[9], dist });
     }
-    mapaAparcar.setView([sitio.lat, sitio.lon], radio <= 500 ? 16 : radio <= 1000 ? 15 : radio <= 2000 ? 14 : 12);
+    lista.sort((a, b) => a.dist - b.dist);
+    const total = lista.length;
 
-    $('#listaAparcamientos').innerHTML = lista.length
-      ? `<p class="nota">${total} aparcamientos a menos de ${radio >= 1000 ? radio / 1000 + ' km' : radio + ' m'} de ${escapar(sitio.nombre)}. ${total > lista.length ? `Aquí tienes los ${lista.length} primeros (gratis y más grandes antes); en el mapa salen hasta 300.` : ''} Datos de OpenStreetMap: pueden faltar o no estar al día. Los que no indican precio pueden ser de pago, y en Madrid la calle suele ser zona SER (de pago).</p>`
-        + lista.map((a) => {
-          const datosLinea = [TIPOS_PARKING[a.tipo], a.pago, a.plazas && a.plazas + ' plazas', a.disuasorio && 'Disuasorio (P+R)'].filter(Boolean);
-          const google = `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${a.lat},${a.lon}`;
-          const waze = `https://waze.com/ul?ll=${a.lat},${a.lon}&navigate=yes`;
-          return `<article class="tarjeta">
-            <div class="cabeza"><span class="nombre">🅿️ ${escapar(a.nombre)}</span>
-              <span class="precio">${a.dist < 1 ? Math.round(a.dist * 1000) + ' m' : km1(a.dist) + ' km'}</span></div>
-            ${datosLinea.length ? `<div class="datos">${escapar(datosLinea.join(' · '))}</div>` : ''}
-            ${a.horario ? `<div class="datos">Horario: ${escapar(a.horario)}</div>` : ''}
-            ${a.operador && a.operador !== a.nombre ? `<div class="datos">Gestiona: ${escapar(a.operador)}</div>` : ''}
-            <div class="enlaces">
-              <a href="${waze}" target="_blank" rel="noopener"><b>Ir con Waze</b></a>
-              <a href="${google}" target="_blank" rel="noopener">Google Maps</a>
-              ${/^https?:\/\//.test(a.web) ? `<a href="${escapar(a.web)}" target="_blank" rel="noopener">Web</a>` : ''}
-            </div>
-          </article>`;
-        }).join('')
-      : '<p class="nota">No he encontrado aparcamientos con esos filtros. Prueba con más distancia o con "Gratis o sin precio conocido".</p>';
+    iniciarMapaCargar();
+    capaCargar.clearLayers();
+    L.circle([sitio.lat, sitio.lon], { radius: radio * 1000, color: '#2563eb', weight: 1, fillOpacity: 0.05 }).addTo(capaCargar);
+    L.circleMarker([sitio.lat, sitio.lon], { radius: 9, color: '#111827', fillOpacity: 0.9, weight: 2 })
+      .bindPopup(escapar(sitio.nombre)).addTo(capaCargar);
+    for (const c of lista.slice(0, 400)) {
+      L.circleMarker([c.lat, c.lon], { radius: c.kw >= 50 ? 8 : 6, color: c.kw >= 50 ? '#1d4ed8' : '#60a5fa', fillOpacity: 0.85, weight: 1 })
+        .bindPopup(`<b>⚡ ${escapar(c.nombre)}</b><br>${c.kw ? kwTxt(c.kw) : ''} ${escapar(c.conectores.join(', '))}`
+          + `<br><a href="https://waze.com/ul?ll=${c.lat},${c.lon}&navigate=yes" target="_blank" rel="noopener"><b>Ir con Waze</b></a>`
+          + ` · <a href="https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${c.lat},${c.lon}" target="_blank" rel="noopener">Google Maps</a>`)
+        .addTo(capaCargar);
+    }
+    mapaCargar.setView([sitio.lat, sitio.lon], radio <= 1 ? 15 : radio <= 2 ? 14 : radio <= 5 ? 13 : radio <= 10 ? 12 : 10);
+
+    lista = lista.slice(0, 50);
+    $('#listaCargar').innerHTML = total
+      ? `<p class="nota">${total} electrolineras a menos de ${radio} km de ${escapar(sitio.nombre)}${total > lista.length ? ` (aquí las ${lista.length} más cercanas; en el mapa, hasta 400)` : ''}. Datos oficiales de la DGT: no incluyen precio ni si están libres.</p>`
+        + lista.map((c) => `<article class="tarjeta">
+          <div class="cabeza"><span class="nombre">⚡ ${escapar(c.nombre)}</span>
+            <span class="precio">${c.kw ? kwTxt(c.kw) : ''}</span></div>
+          <div class="datos">A ${c.dist < 1 ? Math.round(c.dist * 1000) + ' m' : km1(c.dist) + ' km'} en línea recta${c.municipio ? ' · ' + escapar(c.municipio) : ''}${c.direccion ? ' · ' + escapar(c.direccion) : ''}</div>
+          <div class="datos">${c.conectores.length ? escapar(c.conectores.join(', ')) : 'Conectores sin datos'}${c.puntos ? ' · ' + c.puntos + (c.puntos === 1 ? ' punto' : ' puntos') : ''}</div>
+          ${c.operador && c.operador !== c.nombre ? `<div class="datos">Operador: ${escapar(c.operador)}</div>` : ''}
+          ${c.horario ? `<div class="datos">Horario: ${escapar(c.horario)}</div>` : ''}
+          <div class="enlaces">
+            <a class="boton-nav" href="https://waze.com/ul?ll=${c.lat},${c.lon}&navigate=yes" target="_blank" rel="noopener">🚗 Ir con Waze</a>
+            <a class="boton-nav" href="https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${c.lat},${c.lon}" target="_blank" rel="noopener">🗺️ Google Maps</a>
+          </div>
+        </article>`).join('')
+      : '<p class="nota">No he encontrado electrolineras con esos filtros. Prueba con más distancia.</p>';
   } catch (err) {
-    $('#listaAparcamientos').innerHTML = `<p class="nota">${escapar(err.message || 'No he podido buscar aparcamientos.')}</p>`;
+    $('#listaCargar').innerHTML = `<p class="nota">${escapar(err.message === 'sin datos DGT' ? 'No he podido cargar los datos de electrolineras.' : (err.message || 'No he podido buscar electrolineras.'))}</p>`;
   } finally {
     boton.disabled = false;
   }
@@ -707,30 +687,30 @@ function repostarAhora() {
 function cambiarModo(modo) {
   document.querySelectorAll('.modo').forEach((b) => b.classList.toggle('activo', b.dataset.modo === modo));
   $('#modo-ruta').hidden = modo !== 'ruta';
-  $('#modo-aparcar').hidden = modo !== 'aparcar';
-  $('#titulo').textContent = modo === 'aparcar' ? '🅿️ Aparcar gratis' : '⛽ Gasolineras en ruta';
-  $('#subtitulo').textContent = modo === 'aparcar'
-    ? 'Aparcamientos gratis alrededor de cualquier punto del mapa'
+  $('#modo-cargar').hidden = modo !== 'cargar';
+  $('#titulo').textContent = modo === 'cargar' ? '⚡ Electrolineras' : '⛽ Gasolineras en ruta';
+  $('#subtitulo').textContent = modo === 'cargar'
+    ? 'Puntos de recarga alrededor de cualquier punto del mapa'
     : 'La gasolinera y el cargador que más compensan en tu viaje';
-  document.title = modo === 'aparcar' ? 'Aparcar gratis' : 'Gasolineras en ruta';
+  document.title = modo === 'cargar' ? 'Electrolineras' : 'Gasolineras en ruta';
   try { localStorage.setItem('modo', modo); } catch { /* sin almacenamiento */ }
-  if (modo === 'aparcar') {
-    iniciarMapaAparcar();
-    setTimeout(() => mapaAparcar.invalidateSize(), 0);
+  if (modo === 'cargar') {
+    iniciarMapaCargar();
+    setTimeout(() => mapaCargar.invalidateSize(), 0);
   } else if (mapa) {
     setTimeout(() => mapa.invalidateSize(), 0);
   }
 }
 
-function ubicacionAparcar() {
+function ubicacionCargar() {
   if (!navigator.geolocation) return;
-  $('#listaAparcamientos').innerHTML = '<p class="nota">Buscando tu ubicación…</p>';
+  $('#listaCargar').innerHTML = '<p class="nota">Buscando tu ubicación…</p>';
   navigator.geolocation.getCurrentPosition(
     (p) => {
-      $('#sitioAparcar').value = `${p.coords.latitude.toFixed(5)},${p.coords.longitude.toFixed(5)}`;
-      buscarAparcamientos({ lat: p.coords.latitude, lon: p.coords.longitude, nombre: 'tu ubicación' });
+      $('#sitioCargar').value = `${p.coords.latitude.toFixed(5)},${p.coords.longitude.toFixed(5)}`;
+      buscarElectrolineras({ lat: p.coords.latitude, lon: p.coords.longitude, nombre: 'tu ubicación' });
     },
-    () => { $('#listaAparcamientos').innerHTML = '<p class="nota">No he podido obtener tu ubicación. Revisa los permisos.</p>'; },
+    () => { $('#listaCargar').innerHTML = '<p class="nota">No he podido obtener tu ubicación. Revisa los permisos.</p>'; },
     { enableHighAccuracy: true, timeout: 15000 },
   );
 }
@@ -758,13 +738,13 @@ function iniciar() {
   document.addEventListener('click', (e) => { if (e.target.closest('a[data-continuar]')) guardarContinuar(); });
   mostrarContinuar();
   $('#btnCargadores').addEventListener('click', buscarCargadores);
-  $('#btnAparcar').addEventListener('click', () => buscarAparcamientos());
-  $('#sitioAparcar').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); buscarAparcamientos(); } });
-  $('#btnUbicacionAparcar').addEventListener('click', ubicacionAparcar);
+  $('#btnCargar').addEventListener('click', () => buscarElectrolineras());
+  $('#sitioCargar').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); buscarElectrolineras(); } });
+  $('#btnUbicacionCargar').addEventListener('click', ubicacionCargar);
   document.querySelectorAll('.modo').forEach((b) => b.addEventListener('click', () => cambiarModo(b.dataset.modo)));
   let modoGuardado = 'ruta';
   try { modoGuardado = localStorage.getItem('modo') || 'ruta'; } catch { /* sin almacenamiento */ }
-  cambiarModo(modoGuardado === 'aparcar' ? 'aparcar' : 'ruta');
+  cambiarModo(modoGuardado === 'cargar' ? 'cargar' : 'ruta');
   document.querySelectorAll('.pestana').forEach((b) => b.addEventListener('click', () => cambiarPestana(b.dataset.pestana)));
 
   cargarPrecios().catch(() => { /* se avisa al buscar */ });
