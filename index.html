@@ -32,11 +32,15 @@
       <label>Origen
         <div class="fila">
           <input id="origen" placeholder="Ej.: Ermua" required>
+          <button type="button" class="btnMapa" data-campo="origen" title="Elegir en el mapa">🗺️</button>
           <button type="button" id="btnUbicacion" title="Usar mi ubicación">📍</button>
         </div>
       </label>
       <label>Destino
-        <input id="destino" placeholder="Ej.: Madrid" required>
+        <div class="fila">
+          <input id="destino" placeholder="Ej.: Madrid" required>
+          <button type="button" class="btnMapa" data-campo="destino" title="Elegir en el mapa">🗺️</button>
+        </div>
       </label>
 
       <details id="ajustes">
@@ -150,6 +154,18 @@
     <p id="fechaDatos"></p>
     <p>Precios: Ministerio para la Transición Ecológica. Rutas: OSRM. Cargadores: DGT / MITERD (Punto de Acceso Nacional, CC BY). Mapas: © colaboradores de OpenStreetMap.</p>
   </footer>
+
+  <div id="selector" class="selector" hidden>
+    <div class="selector-caja">
+      <p id="selectorTitulo" class="selector-titulo">Toca el mapa para elegir la salida</p>
+      <div id="mapaSelector"></div>
+      <p id="selectorLugar" class="nota"></p>
+      <div class="fila-botones">
+        <button type="button" id="selectorCancelar" class="secundario">Cancelar</button>
+        <button type="button" id="selectorAceptar" class="principal" disabled>Usar este punto</button>
+      </div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="app.js"></script>

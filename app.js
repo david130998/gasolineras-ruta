@@ -199,6 +199,86 @@ async function cargarPrecios() {
   return datos;
 }
 
+// ---------- Puntos elegidos en el mapa o por GPS ----------
+// El campo muestra el nombre del sitio, pero guarda las coordenadas exactas en data-lat / data-lon.
+
+// Nombre de la localidad de unas coordenadas (Nominatim). Si falla, null.
+async function nombreLugar(lat, lon) {
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=14&accept-language=es&lat=${lat}&lon=${lon}`);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const a = j.address || {};
+    return a.city || a.town || a.village || a.municipality || a.hamlet || a.suburb || a.county
+      || (j.display_name ? j.display_name.split(',')[0] : null);
+  } catch { return null; }
+}
+function fijarCampo(input, lat, lon, texto) {
+  input.dataset.lat = lat;
+  input.dataset.lon = lon;
+  input.value = texto;
+  input.dataset.nombre = texto;
+}
+// Pone las coordenadas en el campo y, en cuanto llega, cambia el texto por el nombre de la localidad.
+async function ponerPunto(input, lat, lon) {
+  fijarCampo(input, lat, lon, 'Buscando el nombre…');
+  const nombre = await nombreLugar(lat, lon);
+  if (input.dataset.lat === String(lat) && input.dataset.lon === String(lon)) {
+    fijarCampo(input, lat, lon, nombre || `${lat.toFixed(5)},${lon.toFixed(5)}`);
+  }
+  return puntoDeCampo(input);
+}
+function puntoDeCampo(input) {
+  if (!input.dataset.lat || input.value !== input.dataset.nombre) return null;
+  return { lat: +input.dataset.lat, lon: +input.dataset.lon, nombre: input.value };
+}
+const lugarDeCampo = (input) => puntoDeCampo(input) || geocodificar(input.value);
+
+// Ventana con un mapa para elegir la salida o la llegada tocando.
+let mapaSelector = null, marcaSelector = null, campoSelector = null, puntoSelector = null;
+function abrirSelector(idCampo) {
+  campoSelector = $('#' + idCampo);
+  puntoSelector = null;
+  $('#selectorTitulo').textContent = idCampo === 'origen' ? 'Toca el mapa para elegir la salida' : 'Toca el mapa para elegir la llegada';
+  $('#selectorLugar').textContent = 'Toca un punto del mapa. Puedes acercar con dos dedos.';
+  $('#selectorAceptar').disabled = true;
+  $('#selector').hidden = false;
+  if (!mapaSelector) {
+    mapaSelector = L.map('mapaSelector').setView([40.2, -3.7], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(mapaSelector);
+    mapaSelector.on('click', (e) => elegirEnSelector(e.latlng.lat, e.latlng.lng));
+  }
+  if (marcaSelector) { marcaSelector.remove(); marcaSelector = null; }
+  const otro = $(idCampo === 'origen' ? '#destino' : '#origen');
+  const previo = puntoDeCampo(campoSelector) || puntoDeCampo(otro);
+  setTimeout(() => {
+    mapaSelector.invalidateSize();
+    if (previo) mapaSelector.setView([previo.lat, previo.lon], 11);
+  }, 0);
+}
+async function elegirEnSelector(lat, lon) {
+  puntoSelector = { lat, lon, nombre: null };
+  if (marcaSelector) marcaSelector.setLatLng([lat, lon]);
+  else marcaSelector = L.circleMarker([lat, lon], { radius: 10, color: '#111827', weight: 3, fillColor: '#0f766e', fillOpacity: 0.9 }).addTo(mapaSelector);
+  $('#selectorLugar').textContent = 'Buscando el nombre…';
+  $('#selectorAceptar').disabled = false;
+  const nombre = await nombreLugar(lat, lon);
+  if (puntoSelector && puntoSelector.lat === lat && puntoSelector.lon === lon) {
+    puntoSelector.nombre = nombre;
+    $('#selectorLugar').textContent = '📍 ' + (nombre || `${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+  }
+}
+function aceptarSelector() {
+  if (!puntoSelector) return;
+  const { lat, lon, nombre } = puntoSelector;
+  if (nombre) fijarCampo(campoSelector, lat, lon, nombre);
+  else ponerPunto(campoSelector, lat, lon);
+  cerrarSelector();
+}
+function cerrarSelector() {
+  $('#selector').hidden = true;
+}
+
 async function geocodificar(texto) {
   const coord = texto.trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
   if (coord) return { lat: +coord[1], lon: +coord[2], nombre: 'Mi ubicación' };
@@ -658,7 +738,7 @@ function iniciarMapaCargar() {
   capaCargar = L.layerGroup().addTo(mapaCargar);
   mapaCargar.on('click', (e) => {
     const { lat, lng } = e.latlng;
-    $('#sitioCargar').value = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+    ponerPunto($('#sitioCargar'), lat, lng);
     buscarElectrolineras({ lat, lon: lng, nombre: 'el punto elegido' });
   });
 }
@@ -670,8 +750,8 @@ async function buscarElectrolineras(sitioElegido) {
   boton.disabled = true;
   $('#listaCargar').innerHTML = '<p class="nota">Buscando electrolineras…</p>';
   try {
-    let sitio = sitioElegido && sitioElegido.lat != null ? sitioElegido : await geocodificar(texto);
-    if (!sitioElegido && /^-?\d/.test(texto)) sitio = { ...sitio, nombre: 'el punto elegido' };
+    let sitio = sitioElegido && sitioElegido.lat != null ? sitioElegido : await lugarDeCampo($('#sitioCargar'));
+    if (!sitioElegido && !puntoDeCampo($('#sitioCargar')) && /^-?\d/.test(texto)) sitio = { ...sitio, nombre: 'el punto elegido' };
     const radio = parseFloat($('#radioCargar').value) || 5;
     const conector = $('#conectorCargar').value;
     const soloRapidos = $('#soloRapidosCargar').checked;
@@ -738,7 +818,7 @@ async function buscar(ev) {
     estado('Cargando precios…');
     await cargarPrecios();
     estado('Buscando origen y destino…');
-    const [origen, destino] = await Promise.all([geocodificar($('#origen').value), geocodificar($('#destino').value)]);
+    const [origen, destino] = await Promise.all([lugarDeCampo($('#origen')), lugarDeCampo($('#destino'))]);
     estado('Calculando la ruta…');
     const ruta = await calcularRuta(origen, destino);
     viaje = { origen, destino, puntos: muestrear(ruta.coords), km: ruta.km, min: ruta.min };
@@ -778,7 +858,7 @@ function usarUbicacion() {
   if (!navigator.geolocation) { estado('Tu navegador no permite usar la ubicación.', true); return; }
   estado('Buscando tu ubicación…');
   navigator.geolocation.getCurrentPosition(
-    (p) => { $('#origen').value = `${p.coords.latitude.toFixed(5)},${p.coords.longitude.toFixed(5)}`; estado(''); },
+    (p) => { estado(''); ponerPunto($('#origen'), p.coords.latitude, p.coords.longitude); },
     () => estado('No he podido obtener tu ubicación. Revisa los permisos.', true),
     { enableHighAccuracy: true, timeout: 15000 },
   );
@@ -790,8 +870,8 @@ function repostarAhora() {
   if (!navigator.geolocation) { estado('Tu navegador no permite usar la ubicación.', true); return; }
   estado('Buscando tu ubicación…');
   navigator.geolocation.getCurrentPosition(
-    (p) => {
-      $('#origen').value = `${p.coords.latitude.toFixed(5)},${p.coords.longitude.toFixed(5)}`;
+    async (p) => {
+      await ponerPunto($('#origen'), p.coords.latitude, p.coords.longitude);
       if ($('#destino').value.trim()) $('#formulario').requestSubmit();
       else buscarCerca(p.coords.latitude, p.coords.longitude);
     },
@@ -948,7 +1028,7 @@ function ubicacionCargar() {
   $('#listaCargar').innerHTML = '<p class="nota">Buscando tu ubicación…</p>';
   navigator.geolocation.getCurrentPosition(
     (p) => {
-      $('#sitioCargar').value = `${p.coords.latitude.toFixed(5)},${p.coords.longitude.toFixed(5)}`;
+      ponerPunto($('#sitioCargar'), p.coords.latitude, p.coords.longitude);
       buscarElectrolineras({ lat: p.coords.latitude, lon: p.coords.longitude, nombre: 'tu ubicación' });
     },
     () => { $('#listaCargar').innerHTML = '<p class="nota">No he podido obtener tu ubicación. Revisa los permisos.</p>'; },
@@ -973,6 +1053,13 @@ function iniciar() {
 
   $('#formulario').addEventListener('submit', buscar);
   $('#btnUbicacion').addEventListener('click', usarUbicacion);
+  document.querySelectorAll('.btnMapa').forEach((b) => b.addEventListener('click', () => abrirSelector(b.dataset.campo)));
+  $('#selectorAceptar').addEventListener('click', aceptarSelector);
+  $('#selectorCancelar').addEventListener('click', cerrarSelector);
+  // Si escribes a mano en un campo, se olvidan las coordenadas guardadas.
+  for (const id of ['origen', 'destino', 'sitioCargar']) {
+    $('#' + id).addEventListener('input', (e) => { delete e.target.dataset.lat; delete e.target.dataset.lon; delete e.target.dataset.nombre; });
+  }
   $('#btnAhora').addEventListener('click', repostarAhora);
   $('#cerrarContinuar').addEventListener('click', cerrarContinuar);
   $('#enlaceContinuar').addEventListener('click', () => setTimeout(cerrarContinuar, 500));

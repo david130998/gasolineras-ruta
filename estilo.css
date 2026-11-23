@@ -214,3 +214,12 @@ body:has(.barra-continuar:not([hidden])) footer { padding-bottom: 96px; }
 .leyenda { display: flex; flex-wrap: wrap; gap: 4px; margin: -4px 0 12px; }
 .leyenda[hidden] { display: none; }
 .leyenda span { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; }
+
+/* Ventana para elegir salida o llegada en el mapa */
+.selector { position: fixed; inset: 0; z-index: 2000; background: rgba(0, 0, 0, 0.5); display: flex; align-items: flex-end; justify-content: center; }
+.selector[hidden] { display: none; }
+.selector-caja { background: var(--tarjeta); width: 100%; max-width: 760px; border-radius: 16px 16px 0 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); display: grid; gap: 8px; }
+.selector-titulo { margin: 0; font-weight: 700; }
+#mapaSelector { height: 60vh; border-radius: 12px; border: 1px solid var(--borde); cursor: crosshair; z-index: 0; }
+.fila-botones { display: flex; gap: 8px; }
+.fila-botones button { flex: 1; margin: 0; }
