@@ -89,7 +89,7 @@ function etiquetaPrecio(marcador, precio, principal, prioridad = 999, nivel = 0)
   marcador.options.precio = precio;
   marcador.options.principal = principal;
   marcador.bindTooltip(txt, {
-    permanent: true, direction: 'top', offset: [0, -6],
+    permanent: true, direction: 'top', offset: [0, -3],
     className: `etiqueta-precio nivel-${nivel}` + (principal ? ' principal' : ''),
   });
   return marcador;
