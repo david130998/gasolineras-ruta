@@ -121,6 +121,33 @@ function actualizarMapa() {
   evitarSolapes();
 }
 
+// Al tocar una tarjeta de la lista: el mapa se acerca a esa gasolinera y abre su ficha.
+let marcaSeleccionada = null;
+function verEnMapa(tarjeta) {
+  if (!mapa || !capaEstaciones) return;
+  const lat = +tarjeta.dataset.lat, lon = +tarjeta.dataset.lon;
+  const m = capaEstaciones.getLayers().find((c) => c.options.precio != null
+    && Math.abs(c.getLatLng().lat - lat) < 1e-7 && Math.abs(c.getLatLng().lng - lon) < 1e-7);
+  document.querySelectorAll('.tarjeta.seleccionada').forEach((t) => t.classList.remove('seleccionada'));
+  tarjeta.classList.add('seleccionada');
+  if (marcaSeleccionada && capaEstaciones.hasLayer(marcaSeleccionada)) {
+    marcaSeleccionada.options.prioridad = marcaSeleccionada.options.prioridadOriginal;
+    marcaSeleccionada.setRadius(marcaSeleccionada.options.radioOriginal);
+  }
+  marcaSeleccionada = null;
+  if (m) {
+    marcaSeleccionada = m;
+    m.options.prioridadOriginal = m.options.prioridad;
+    m.options.radioOriginal = m.getRadius();
+    m.options.prioridad = -1; // su etiqueta se ve siempre, aunque pise otras
+    m.setRadius(11);
+    m.bringToFront();
+  }
+  $('#mapa').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  mapa.once('moveend', () => { if (m) m.openPopup(); });
+  mapa.setView([lat, lon], Math.max(mapa.getZoom(), 14), { animate: true });
+}
+
 // Oculta las etiquetas que se solapan con otra más importante. Se repite al mover o hacer zoom.
 function evitarSolapes() {
   if (!mapa || !capaEstaciones) return;
@@ -490,7 +517,7 @@ function tarjetaGasolinera(g, ref) {
   const signo = g.ahorro >= 0 ? 'bien' : 'mal';
   const textoAhorro = g.ahorro >= 0 ? `Ganas ${euros(g.ahorro)}` : `Pierdes ${euros(-g.ahorro)}`;
   const aprox = g.real ? '' : ' (aprox.)';
-  return `<article class="tarjeta">
+  return `<article class="tarjeta" data-lat="${g.lat}" data-lon="${g.lon}" title="Ver en el mapa">
     <div class="cabeza">
       <span class="nombre">${escapar(g.rotulo)}</span>
       <span class="precio">${precioTxt(g.precio)}</span>
@@ -890,7 +917,7 @@ function tarjetaCerca(g, cercana) {
   const textoGanas = g === cercana ? 'Es la más cercana'
     : ganas >= 0 ? `Ganas ${euros(ganas)}` : `Pierdes ${euros(-ganas)}`;
   const aprox = g.real ? '' : ' (aprox.)';
-  return `<article class="tarjeta">
+  return `<article class="tarjeta" data-lat="${g.lat}" data-lon="${g.lon}" title="Ver en el mapa">
     <div class="cabeza">
       <span class="nombre">${escapar(g.rotulo)}</span>
       <span class="precio">${precioTxt(g.precio)}</span>
@@ -1074,6 +1101,12 @@ function iniciar() {
   try { modoGuardado = localStorage.getItem('modo') || 'ruta'; } catch { /* sin almacenamiento */ }
   cambiarModo(modoGuardado === 'cargar' ? 'cargar' : 'ruta');
   document.querySelectorAll('.pestana').forEach((b) => b.addEventListener('click', () => cambiarPestana(b.dataset.pestana)));
+  // Tocar una tarjeta (no sus botones) la enseña en el mapa
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('.tarjeta[data-lat]');
+    if (!t || e.target.closest('a, button')) return;
+    verEnMapa(t);
+  });
 
   cargarPrecios().catch(() => { /* se avisa al buscar */ });
 

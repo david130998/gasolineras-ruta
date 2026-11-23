@@ -223,3 +223,7 @@ body:has(.barra-continuar:not([hidden])) footer { padding-bottom: 96px; }
 #mapaSelector { height: 60vh; border-radius: 12px; border: 1px solid var(--borde); cursor: crosshair; z-index: 0; }
 .fila-botones { display: flex; gap: 8px; }
 .fila-botones button { flex: 1; margin: 0; }
+
+/* Tarjeta que se puede tocar para verla en el mapa */
+.tarjeta[data-lat] { cursor: pointer; }
+.tarjeta.seleccionada { border-color: var(--acento); box-shadow: 0 0 0 2px var(--acento); }
