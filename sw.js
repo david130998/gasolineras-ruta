@@ -1,5 +1,5 @@
 // Guarda la app para que abra rápido y sin cobertura. Los precios y las rutas siempre se piden a internet.
-const CACHE = 'gasolineras-v18';
+const CACHE = 'gasolineras-v19';
 const ARCHIVOS = ['./', 'index.html', 'estilo.css', 'app.js', 'manifest.json',
   'iconos/icono-192.png', 'iconos/icono-512.png', 'iconos/apple-touch-icon.png'];
 
@@ -18,7 +18,8 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   // Primero internet; si no hay conexión, lo guardado.
   e.respondWith(
-    fetch(e.request)
+    // no-cache: pregunta siempre al servidor si hay versión nueva, para que los cambios lleguen antes.
+    fetch(e.request.url, { cache: 'no-cache' })
       .then((r) => {
         const copia = r.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copia));
