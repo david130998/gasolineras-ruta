@@ -74,11 +74,39 @@ function pintarLeyenda(minimo, maximo) {
 function etiquetaPrecio(marcador, precio, principal, prioridad = 999, nivel = 0) {
   const txt = precio.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   marcador.options.prioridad = prioridad;
+  marcador.options.precio = precio;
+  marcador.options.principal = principal;
   marcador.bindTooltip(txt, {
     permanent: true, direction: 'top', offset: [0, -6],
     className: `etiqueta-precio nivel-${nivel}` + (principal ? ' principal' : ''),
   });
   return marcador;
+}
+
+// Ajusta la escala de colores (mínimo y máximo) a las gasolineras que se ven ahora en el mapa.
+function recolorear() {
+  if (!mapa || !capaEstaciones) return;
+  const zona = mapa.getBounds();
+  const marcas = capaEstaciones.getLayers().filter((m) => m.options.precio != null);
+  let vistas = marcas.filter((m) => zona.contains(m.getLatLng()));
+  if (!vistas.length) vistas = marcas;
+  if (!vistas.length) return;
+  const precios = vistas.map((m) => m.options.precio);
+  pintarLeyenda(Math.min(...precios), Math.max(...precios));
+  for (const m of marcas) {
+    const nivel = nivelPrecio(m.options.precio);
+    const color = colorNivel(nivel);
+    m.setStyle({ fillColor: color, color: m.options.principal ? '#111827' : color });
+    const t = m.getTooltip();
+    if (!t) continue;
+    t.options.className = `etiqueta-precio nivel-${nivel}` + (m.options.principal ? ' principal' : '');
+    const el = t.getElement();
+    if (el) el.className = el.className.replace(/\bnivel-\d+\b/, `nivel-${nivel}`);
+  }
+}
+function actualizarMapa() {
+  recolorear();
+  evitarSolapes();
 }
 
 // Oculta las etiquetas que se solapan con otra más importante. Se repite al mover o hacer zoom.
@@ -323,7 +351,7 @@ async function desviosPorCarretera(sitios) {
 function iniciarMapa() {
   if (mapa) return;
   mapa = L.map('mapa', { zoomControl: true });
-  mapa.on('zoomend moveend', () => requestAnimationFrame(evitarSolapes));
+  mapa.on('zoomend moveend', () => requestAnimationFrame(actualizarMapa));
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '© OpenStreetMap',
@@ -724,7 +752,7 @@ async function buscar(ev) {
 
     pintarResumen(res, aj);
     pintarGasolineras(res, aj);
-    requestAnimationFrame(evitarSolapes);
+    requestAnimationFrame(actualizarMapa);
     estado(`${origen.nombre} → ${destino.nombre}`);
   } catch (err) {
     console.error(err);
@@ -866,7 +894,7 @@ async function buscarCerca(lat, lon) {
     }
     mapa.invalidateSize();
     mapa.setView([lat, lon], 12);
-    requestAnimationFrame(evitarSolapes);
+    requestAnimationFrame(actualizarMapa);
 
     const mejor = lista[0];
     $('#resumen').innerHTML = `
