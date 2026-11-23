@@ -28,12 +28,31 @@ function euros(n) {
 
 // Etiqueta fija con el precio encima del punto del mapa ("1,299").
 // Las secundarias solo se ven al acercar el mapa, para que no se amontonen.
-function etiquetaPrecio(marcador, precio, principal) {
+// "prioridad": 0 = la que más compensa. Si dos etiquetas se pisan, se queda la de menor prioridad.
+function etiquetaPrecio(marcador, precio, principal, prioridad = 999) {
   const txt = precio.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  marcador.options.prioridad = prioridad;
   return marcador.bindTooltip(txt, {
     permanent: true, direction: 'top', offset: [0, -6],
     className: 'etiqueta-precio' + (principal ? ' principal' : ' secundaria'),
   });
+}
+
+// Oculta las etiquetas que se solapan con otra más importante. Se repite al mover o hacer zoom.
+function evitarSolapes() {
+  if (!mapa || !capaEstaciones) return;
+  const marcas = [];
+  capaEstaciones.eachLayer((m) => { const t = m.getTooltip && m.getTooltip(); if (t && t.getElement()) marcas.push(m); });
+  marcas.sort((a, b) => a.options.prioridad - b.options.prioridad);
+  const ocupadas = [];
+  for (const m of marcas) {
+    const el = m.getTooltip().getElement();
+    el.style.visibility = 'visible';
+    const r = el.getBoundingClientRect();
+    const pisa = ocupadas.some((o) => r.left < o.right + 2 && r.right > o.left - 2 && r.top < o.bottom + 2 && r.bottom > o.top - 2);
+    if (pisa) el.style.visibility = 'hidden';
+    else ocupadas.push(r);
+  }
 }
 
 function precioTxt(n) {
@@ -261,9 +280,7 @@ async function desviosPorCarretera(sitios) {
 function iniciarMapa() {
   if (mapa) return;
   mapa = L.map('mapa', { zoomControl: true });
-  const zoomCerca = () => mapa.getContainer().classList.toggle('zoom-cerca', mapa.getZoom() >= 11);
-  mapa.on('zoomend', zoomCerca);
-  mapa.whenReady(zoomCerca);
+  mapa.on('zoomend moveend', () => requestAnimationFrame(evitarSolapes));
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '© OpenStreetMap',
@@ -366,7 +383,7 @@ function pintarGasolineras(res, aj) {
     }).bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${escapar(g.localidad)}<br>`
       + (g.ahorro >= 0 ? `Ganas ${euros(g.ahorro)}` : `Pierdes ${euros(-g.ahorro)}`)
       + `<br>+${Math.round(g.extraMin)} min · +${km1(g.extraKm)} km`);
-    etiquetaPrecio(m, g.precio, mejores.has(g)).addTo(capaEstaciones);
+    etiquetaPrecio(m, g.precio, mejores.has(g), ordenadas.indexOf(g)).addTo(capaEstaciones);
   }
 }
 
@@ -660,6 +677,7 @@ async function buscar(ev) {
 
     pintarResumen(res, aj);
     pintarGasolineras(res, aj);
+    requestAnimationFrame(evitarSolapes);
     estado(`${origen.nombre} → ${destino.nombre}`);
   } catch (err) {
     console.error(err);
@@ -794,10 +812,11 @@ async function buscarCerca(lat, lon) {
       const m = L.circleMarker([g.lat, g.lon], { radius: top.includes(g) ? 8 : 5, color: g.ganas >= 0 ? '#15803d' : '#b91c1c', fillOpacity: 0.85, weight: 1 })
         .bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${Math.round(g.min)} min`
           + `<br><a href="https://waze.com/ul?ll=${g.lat},${g.lon}&navigate=yes" target="_blank" rel="noopener"><b>Ir con Waze</b></a>`);
-      etiquetaPrecio(m, g.precio, top.includes(g)).addTo(capaEstaciones);
+      etiquetaPrecio(m, g.precio, top.includes(g), lista.indexOf(g)).addTo(capaEstaciones);
     }
     mapa.invalidateSize();
     mapa.setView([lat, lon], 12);
+    requestAnimationFrame(evitarSolapes);
 
     const mejor = lista[0];
     $('#resumen').innerHTML = `

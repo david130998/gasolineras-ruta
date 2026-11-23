@@ -213,4 +213,3 @@ body:has(.barra-continuar:not([hidden])) footer { padding-bottom: 96px; }
 }
 .leaflet-tooltip.etiqueta-precio.principal { background: #0f766e; color: #ffffff; }
 .leaflet-tooltip.etiqueta-precio::before { display: none; }
-#mapa:not(.zoom-cerca) .leaflet-tooltip.etiqueta-precio.secundaria { display: none; }
