@@ -479,6 +479,14 @@ function capaBase() {
 
 // Vista satélite: ortofoto oficial del PNOA (Instituto Geográfico Nacional), gratis y sin clave. Solo cubre España.
 function capaSatelite() {
+  // Encima de la foto, la capa transparente del IGN con nombres de pueblos, ciudades y carreteras (IGNBaseOrto)
+  const nombres = L.tileLayer('https://www.ign.es/wmts/ign-base?layer=IGNBaseOrto&style=default&tilematrixset=GoogleMapsCompatible'
+    + '&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/png&TileMatrix={z}&TileCol={x}&TileRow={y}', {
+    maxZoom: 19, pane: 'overlayPane',
+  });
+  return L.layerGroup([fotoSatelite(), nombres]);
+}
+function fotoSatelite() {
   return L.tileLayer('https://www.ign.es/wmts/pnoa-ma?layer=OI.OrthoimageCoverage&style=default&tilematrixset=GoogleMapsCompatible'
     + '&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/jpeg&TileMatrix={z}&TileCol={x}&TileRow={y}', {
     maxZoom: 19,
