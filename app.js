@@ -28,14 +28,35 @@ function euros(n) {
 
 // Etiqueta fija con el precio encima del punto del mapa ("1,299").
 // Las secundarias solo se ven al acercar el mapa, para que no se amontonen.
+// Escala de colores por precio, en saltos de 5 céntimos desde la más barata de lo que se ve.
+const COLORES_PRECIO = ['#166534', '#16a34a', '#84cc16', '#eab308', '#f97316', '#dc2626', '#7f1d1d'];
+const TEXTO_PRECIO = ['#fff', '#fff', '#1a2e05', '#1c1917', '#fff', '#fff', '#fff'];
+function nivelPrecio(precio, minimo) {
+  return Math.min(COLORES_PRECIO.length - 1, Math.max(0, Math.floor((precio - minimo + 1e-9) / 0.05)));
+}
+
+function pintarLeyenda(minimo, maximo) {
+  const el = $('#leyenda');
+  if (!el) return;
+  const niveles = nivelPrecio(maximo, minimo) + 1;
+  const fmt = (n) => n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  el.innerHTML = Array.from({ length: niveles }, (_, i) => {
+    const desde = minimo + i * 0.05;
+    const texto = i === COLORES_PRECIO.length - 1 ? `≥ ${fmt(desde)}` : `${fmt(desde)}–${fmt(desde + 0.05)}`;
+    return `<span style="background:${COLORES_PRECIO[i]};color:${TEXTO_PRECIO[i]}">${texto}</span>`;
+  }).join('');
+  el.hidden = false;
+}
+
 // "prioridad": 0 = la que más compensa. Si dos etiquetas se pisan, se queda la de menor prioridad.
-function etiquetaPrecio(marcador, precio, principal, prioridad = 999) {
+function etiquetaPrecio(marcador, precio, principal, prioridad = 999, nivel = 0) {
   const txt = precio.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   marcador.options.prioridad = prioridad;
-  return marcador.bindTooltip(txt, {
+  marcador.bindTooltip(txt, {
     permanent: true, direction: 'top', offset: [0, -6],
-    className: 'etiqueta-precio' + (principal ? ' principal' : ' secundaria'),
+    className: `etiqueta-precio nivel-${nivel}` + (principal ? ' principal' : ''),
   });
+  return marcador;
 }
 
 // Oculta las etiquetas que se solapan con otra más importante. Se repite al mover o hacer zoom.
@@ -374,16 +395,20 @@ function pintarGasolineras(res, aj) {
 
   // Mapa: verde si compensa, rojo si no; las 15 mejores más grandes
   const mejores = new Set(top);
+  const minimo = Math.min(...lista.map((g) => g.precio));
+  pintarLeyenda(minimo, Math.max(...lista.map((g) => g.precio)));
   for (const g of lista) {
+    const nivel = nivelPrecio(g.precio, minimo);
     const m = L.circleMarker([g.lat, g.lon], {
-      radius: mejores.has(g) ? 8 : 4,
-      color: g.ahorro >= 0 ? '#15803d' : '#b91c1c',
-      fillOpacity: mejores.has(g) ? 0.9 : 0.5,
-      weight: 1,
+      radius: mejores.has(g) ? 8 : 5,
+      color: mejores.has(g) ? '#111827' : COLORES_PRECIO[nivel],
+      fillColor: COLORES_PRECIO[nivel],
+      fillOpacity: 0.9,
+      weight: mejores.has(g) ? 2 : 1,
     }).bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${escapar(g.localidad)}<br>`
       + (g.ahorro >= 0 ? `Ganas ${euros(g.ahorro)}` : `Pierdes ${euros(-g.ahorro)}`)
       + `<br>+${Math.round(g.extraMin)} min · +${km1(g.extraKm)} km`);
-    etiquetaPrecio(m, g.precio, mejores.has(g), ordenadas.indexOf(g)).addTo(capaEstaciones);
+    etiquetaPrecio(m, g.precio, mejores.has(g), ordenadas.indexOf(g), nivel).addTo(capaEstaciones);
   }
 }
 
@@ -808,11 +833,14 @@ async function buscarCerca(lat, lon) {
     capaEstaciones.clearLayers();
     L.circleMarker([lat, lon], { radius: 9, color: '#111827', fillOpacity: 0.9, weight: 2 }).bindPopup('Estás aquí').addTo(capaEstaciones);
     const top = lista.slice(0, 15);
+    const minimo = Math.min(...lista.map((g) => g.precio));
+    pintarLeyenda(minimo, Math.max(...lista.map((g) => g.precio)));
     for (const g of lista) {
-      const m = L.circleMarker([g.lat, g.lon], { radius: top.includes(g) ? 8 : 5, color: g.ganas >= 0 ? '#15803d' : '#b91c1c', fillOpacity: 0.85, weight: 1 })
+      const nivel = nivelPrecio(g.precio, minimo);
+      const m = L.circleMarker([g.lat, g.lon], { radius: top.includes(g) ? 8 : 5, color: top.includes(g) ? '#111827' : COLORES_PRECIO[nivel], fillColor: COLORES_PRECIO[nivel], fillOpacity: 0.9, weight: top.includes(g) ? 2 : 1 })
         .bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${Math.round(g.min)} min`
           + `<br><a href="https://waze.com/ul?ll=${g.lat},${g.lon}&navigate=yes" target="_blank" rel="noopener"><b>Ir con Waze</b></a>`);
-      etiquetaPrecio(m, g.precio, top.includes(g), lista.indexOf(g)).addTo(capaEstaciones);
+      etiquetaPrecio(m, g.precio, top.includes(g), lista.indexOf(g), nivel).addTo(capaEstaciones);
     }
     mapa.invalidateSize();
     mapa.setView([lat, lon], 12);
