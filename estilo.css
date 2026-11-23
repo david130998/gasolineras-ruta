@@ -296,3 +296,6 @@ body:has(.barra-continuar:not([hidden])) footer { padding-bottom: 96px; }
 
 .cargador-si { font-size: 0.85rem; font-weight: 600; color: #1d4ed8; }
 @media (prefers-color-scheme: dark) { .cargador-si { color: #93c5fd; } }
+
+/* Mapa base más suave para que destaquen la ruta y los precios */
+.teselas-suaves { filter: saturate(0.5) brightness(1.04) contrast(0.92); }

@@ -469,11 +469,11 @@ async function desviosPorCarretera(sitios) {
 
 // ---------- Pintar resultados ----------
 
-// Mapa base claro y limpio (CARTO Voyager, datos de OpenStreetMap)
+// Mapa base: OpenStreetMap (gratis y sin clave), con los colores suavizados por CSS (.teselas-suaves)
 function capaBase() {
-  return L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    maxZoom: 19, subdomains: 'abcd',
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+  return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, className: 'teselas-suaves',
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   });
 }
 
