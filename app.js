@@ -28,19 +28,30 @@ function euros(n) {
 
 // Etiqueta fija con el precio encima del punto del mapa ("1,299").
 // Las secundarias solo se ven al acercar el mapa, para que no se amontonen.
-// Escala de colores por precio, en tramos reales de 5 céntimos (1,45–1,50, 1,50–1,55…),
-// desde el tramo de la más barata hasta el de la más cara de lo que se ve.
-// Hasta 7 tramos, cada uno tiene su color fijo; si hay más, los colores se reparten de verde a granate.
+// Escala de colores por precio: entre la más barata y la más cara de lo que se ve en el mapa,
+// partida en 6–8 tramos con cortes redondos (medio céntimo, 1, 2, 3, 5, 6, 10 céntimos… según la diferencia).
+// Los colores siempre van de verde oscuro (barata) a granate (cara).
 const PALETA_PRECIO = ['#166534', '#16a34a', '#84cc16', '#eab308', '#f97316', '#dc2626', '#7f1d1d'];
-const PASO = 0.05;
-let escala = { base: 0, tramos: 1 };
-const tramoDe = (precio) => Math.floor(precio / PASO + 1e-6);
+const PASOS_MILESIMAS = [5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 150, 200, 250, 500];
+const MAX_TRAMOS = 8;
+let escala = { base: 0, paso: 50, tramos: 1 }; // base y paso en milésimas de euro
+const mil = (precio) => Math.round(precio * 1000);
 function nivelPrecio(precio) {
-  return Math.min(escala.tramos - 1, Math.max(0, tramoDe(precio) - tramoDe(escala.base)));
+  return Math.min(escala.tramos - 1, Math.max(0, Math.floor((mil(precio) - escala.base) / escala.paso)));
+}
+function calcularEscala(minimo, maximo) {
+  const lo = mil(minimo), hi = mil(maximo);
+  for (const paso of PASOS_MILESIMAS) {
+    const base = Math.floor(lo / paso) * paso;
+    const tramos = Math.floor((hi - base) / paso) + 1;
+    if (tramos <= MAX_TRAMOS) return { base, paso, tramos };
+  }
+  const paso = PASOS_MILESIMAS[PASOS_MILESIMAS.length - 1];
+  return { base: Math.floor(lo / paso) * paso, paso, tramos: MAX_TRAMOS };
 }
 function colorNivel(i) {
   const n = escala.tramos;
-  if (n <= PALETA_PRECIO.length) return PALETA_PRECIO[i];
+  if (n <= 1) return PALETA_PRECIO[0];
   const t = (i / (n - 1)) * (PALETA_PRECIO.length - 1);
   const a = Math.floor(t), b = Math.min(a + 1, PALETA_PRECIO.length - 1), f = t - a;
   const rgb = (h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
@@ -52,14 +63,15 @@ function textoNivel(i) {
   return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#1c1917' : '#fff';
 }
 function pintarLeyenda(minimo, maximo) {
-  escala = { base: tramoDe(minimo) * PASO, tramos: tramoDe(maximo) - tramoDe(minimo) + 1 };
-  const fmt = (n) => n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  escala = calcularEscala(minimo, maximo);
+  const dec = escala.paso % 10 ? 3 : 2;
+  const fmt = (m) => (m / 1000).toLocaleString('es-ES', { minimumFractionDigits: dec, maximumFractionDigits: dec });
   const css = [];
   const trozos = [];
   for (let i = 0; i < escala.tramos; i++) {
-    const desde = escala.base + i * PASO;
+    const desde = escala.base + i * escala.paso;
     css.push(`.etiqueta-precio.nivel-${i}{background:${colorNivel(i)};color:${textoNivel(i)}}`);
-    trozos.push(`<span style="background:${colorNivel(i)};color:${textoNivel(i)}">${fmt(desde)}–${fmt(desde + PASO)}</span>`);
+    trozos.push(`<span style="background:${colorNivel(i)};color:${textoNivel(i)}">${fmt(desde)}–${fmt(desde + escala.paso)}</span>`);
   }
   let estilo = document.getElementById('estiloNiveles');
   if (!estilo) { estilo = document.createElement('style'); estilo.id = 'estiloNiveles'; document.head.appendChild(estilo); }
