@@ -28,23 +28,45 @@ function euros(n) {
 
 // Etiqueta fija con el precio encima del punto del mapa ("1,299").
 // Las secundarias solo se ven al acercar el mapa, para que no se amontonen.
-// Escala de colores por precio, en saltos de 5 céntimos desde la más barata de lo que se ve.
-const COLORES_PRECIO = ['#166534', '#16a34a', '#84cc16', '#eab308', '#f97316', '#dc2626', '#7f1d1d'];
-const TEXTO_PRECIO = ['#fff', '#fff', '#1a2e05', '#1c1917', '#fff', '#fff', '#fff'];
-function nivelPrecio(precio, minimo) {
-  return Math.min(COLORES_PRECIO.length - 1, Math.max(0, Math.floor((precio - minimo + 1e-9) / 0.05)));
+// Escala de colores por precio, en tramos reales de 5 céntimos (1,45–1,50, 1,50–1,55…),
+// desde el tramo de la más barata hasta el de la más cara de lo que se ve.
+// Hasta 7 tramos, cada uno tiene su color fijo; si hay más, los colores se reparten de verde a granate.
+const PALETA_PRECIO = ['#166534', '#16a34a', '#84cc16', '#eab308', '#f97316', '#dc2626', '#7f1d1d'];
+const PASO = 0.05;
+let escala = { base: 0, tramos: 1 };
+const tramoDe = (precio) => Math.floor(precio / PASO + 1e-6);
+function nivelPrecio(precio) {
+  return Math.min(escala.tramos - 1, Math.max(0, tramoDe(precio) - tramoDe(escala.base)));
 }
-
+function colorNivel(i) {
+  const n = escala.tramos;
+  if (n <= PALETA_PRECIO.length) return PALETA_PRECIO[i];
+  const t = (i / (n - 1)) * (PALETA_PRECIO.length - 1);
+  const a = Math.floor(t), b = Math.min(a + 1, PALETA_PRECIO.length - 1), f = t - a;
+  const rgb = (h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
+  const [ca, cb] = [rgb(PALETA_PRECIO[a]), rgb(PALETA_PRECIO[b])];
+  return '#' + ca.map((v, k) => Math.round(v + (cb[k] - v) * f).toString(16).padStart(2, '0')).join('');
+}
+function textoNivel(i) {
+  const [r, g, b] = [1, 3, 5].map((k) => parseInt(colorNivel(i).slice(k, k + 2), 16));
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? '#1c1917' : '#fff';
+}
 function pintarLeyenda(minimo, maximo) {
+  escala = { base: tramoDe(minimo) * PASO, tramos: tramoDe(maximo) - tramoDe(minimo) + 1 };
+  const fmt = (n) => n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const css = [];
+  const trozos = [];
+  for (let i = 0; i < escala.tramos; i++) {
+    const desde = escala.base + i * PASO;
+    css.push(`.etiqueta-precio.nivel-${i}{background:${colorNivel(i)};color:${textoNivel(i)}}`);
+    trozos.push(`<span style="background:${colorNivel(i)};color:${textoNivel(i)}">${fmt(desde)}–${fmt(desde + PASO)}</span>`);
+  }
+  let estilo = document.getElementById('estiloNiveles');
+  if (!estilo) { estilo = document.createElement('style'); estilo.id = 'estiloNiveles'; document.head.appendChild(estilo); }
+  estilo.textContent = css.join('\n');
   const el = $('#leyenda');
   if (!el) return;
-  const niveles = nivelPrecio(maximo, minimo) + 1;
-  const fmt = (n) => n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  el.innerHTML = Array.from({ length: niveles }, (_, i) => {
-    const desde = minimo + i * 0.05;
-    const texto = i === COLORES_PRECIO.length - 1 ? `≥ ${fmt(desde)}` : `${fmt(desde)}–${fmt(desde + 0.05)}`;
-    return `<span style="background:${COLORES_PRECIO[i]};color:${TEXTO_PRECIO[i]}">${texto}</span>`;
-  }).join('');
+  el.innerHTML = trozos.join('');
   el.hidden = false;
 }
 
@@ -398,11 +420,11 @@ function pintarGasolineras(res, aj) {
   const minimo = Math.min(...lista.map((g) => g.precio));
   pintarLeyenda(minimo, Math.max(...lista.map((g) => g.precio)));
   for (const g of lista) {
-    const nivel = nivelPrecio(g.precio, minimo);
+    const nivel = nivelPrecio(g.precio);
     const m = L.circleMarker([g.lat, g.lon], {
       radius: mejores.has(g) ? 8 : 5,
-      color: mejores.has(g) ? '#111827' : COLORES_PRECIO[nivel],
-      fillColor: COLORES_PRECIO[nivel],
+      color: mejores.has(g) ? '#111827' : colorNivel(nivel),
+      fillColor: colorNivel(nivel),
       fillOpacity: 0.9,
       weight: mejores.has(g) ? 2 : 1,
     }).bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${escapar(g.localidad)}<br>`
@@ -836,8 +858,8 @@ async function buscarCerca(lat, lon) {
     const minimo = Math.min(...lista.map((g) => g.precio));
     pintarLeyenda(minimo, Math.max(...lista.map((g) => g.precio)));
     for (const g of lista) {
-      const nivel = nivelPrecio(g.precio, minimo);
-      const m = L.circleMarker([g.lat, g.lon], { radius: top.includes(g) ? 8 : 5, color: top.includes(g) ? '#111827' : COLORES_PRECIO[nivel], fillColor: COLORES_PRECIO[nivel], fillOpacity: 0.9, weight: top.includes(g) ? 2 : 1 })
+      const nivel = nivelPrecio(g.precio);
+      const m = L.circleMarker([g.lat, g.lon], { radius: top.includes(g) ? 8 : 5, color: top.includes(g) ? '#111827' : colorNivel(nivel), fillColor: colorNivel(nivel), fillOpacity: 0.9, weight: top.includes(g) ? 2 : 1 })
         .bindPopup(`<b>${escapar(g.rotulo)}</b><br>${precioTxt(g.precio)}<br>${Math.round(g.min)} min`
           + `<br><a href="https://waze.com/ul?ll=${g.lat},${g.lon}&navigate=yes" target="_blank" rel="noopener"><b>Ir con Waze</b></a>`);
       etiquetaPrecio(m, g.precio, top.includes(g), lista.indexOf(g), nivel).addTo(capaEstaciones);
