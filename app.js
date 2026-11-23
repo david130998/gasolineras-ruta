@@ -155,13 +155,21 @@ function evitarSolapes() {
   capaEstaciones.eachLayer((m) => { const t = m.getTooltip && m.getTooltip(); if (t && t.getElement()) marcas.push(m); });
   marcas.sort((a, b) => a.options.prioridad - b.options.prioridad);
   const ocupadas = [];
+  const pisa = (r) => ocupadas.some((o) => r.left < o.right + 2 && r.right > o.left - 2 && r.top < o.bottom + 2 && r.bottom > o.top - 2);
   for (const m of marcas) {
     const el = m.getTooltip().getElement();
     el.style.visibility = 'visible';
+    el.style.translate = '';
     const r = el.getBoundingClientRect();
-    const pisa = ocupadas.some((o) => r.left < o.right + 2 && r.right > o.left - 2 && r.top < o.bottom + 2 && r.bottom > o.top - 2);
-    if (pisa) el.style.visibility = 'hidden';
-    else ocupadas.push(r);
+    // Sitios donde probar la etiqueta, en orden: encima, debajo, derecha, izquierda y en diagonal.
+    const w = r.width, h = r.height;
+    const huecos = [[0, 0], [0, h + 24], [w / 2 + 14, h / 2 + 12], [-(w / 2 + 14), h / 2 + 12],
+      [w / 2 + 10, 0], [-(w / 2 + 10), 0], [w / 2 + 10, h + 24], [-(w / 2 + 10), h + 24]];
+    const hueco = huecos.find(([dx, dy]) => !pisa({ left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy }));
+    if (!hueco) { el.style.visibility = 'hidden'; continue; }
+    const [dx, dy] = hueco;
+    if (dx || dy) el.style.translate = `${dx}px ${dy}px`;
+    ocupadas.push({ left: r.left + dx, right: r.right + dx, top: r.top + dy, bottom: r.bottom + dy });
   }
 }
 
