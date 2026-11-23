@@ -472,7 +472,7 @@ async function desviosPorCarretera(sitios) {
 // Mapa base: OpenStreetMap (gratis y sin clave), con los colores suavizados por CSS (.teselas-suaves)
 function capaBase() {
   return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, className: 'teselas-suaves',
+    maxZoom: 19, className: 'teselas-suaves', crossOrigin: true, // CORS: para poder guardarlas sin conexión
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   });
 }
